@@ -9,7 +9,7 @@ const mapSelectEl = document.getElementById('mapSelect');
 const mapListEl = document.getElementById('mapList');
 
 // 仮サーバURL
-const SERVER_URL = 'http://localhost:3000';
+const SERVER_URL = 'https://pasu-io.onrender.com/';
 const socket = io(SERVER_URL);
 
 let players = {};

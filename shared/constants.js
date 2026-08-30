@@ -11,23 +11,37 @@ const CONSTANTS = {
   PLAYER_H: 36,
   GRAVITY: 0.6,
   
-  // フック
+  // フック（改善版）
   HOOK_SPEED: 25,
   HOOK_MAX_LEN: 500,
+  HOOK_COOLDOWN: 5, // フック連続使用に短い猶予
+  HOOK_PIERCE_FIX: true, // フック貫通バグ修正フラグ
   
   // ハンド
   HAND_SPEED: 20,
-  HAND_MAX_LEN: 400,
+  HAND_MAX_LEN: 300, // 400 → 300に短縮
+  HAND_PENETRATION_FIX: true, // 壁貫通修正
   
-  // 弾
-  BULLET_SPEED: 15,
+  // 弾（調整版）
+  BULLET_SPEED: 13, // 15 → 13に遅延（避けやすく）
   BULLET_LIFE: 120,
+  BULLET_KNOCKBACK: 0.5, // ノックバック強化係数
   
   // 帰還
   RETURN_TIME: 180, // 3秒 (60fps)
+  RETURN_CANCEL: true, // 帰還中に再びHキーでキャンセル可能
   
-  // 無敵時間
+  // 無敵時間（強化）
   SPAWN_INVINCIBLE: 120, // 2秒
+  SPAWN_INVINCIBLE_DURATION: 120, // リスポーン後無敵時間
+  
+  // 操作感（新機能）
+  COYOTE_TIME: 6, // 崖から落下後、6フレーム以内ならジャンプ可能
+  INPUT_BUFFER_SIZE: 10, // 入力バッファサイズ
+  CHARGE_SHOT_MAX: 60, // チャージショット最大フレーム
+  
+  // ブッシュ速度調整
+  BUSH_SPEED_MULT: 0.7, // ブッシュ内は70%の速度
   
   // ブロック種類
   BLOCK_EMPTY: 0,

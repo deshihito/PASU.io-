@@ -96,6 +96,37 @@ const Particles = {
     });
   },
   
+  emitCharge(x, y, ratio) {
+    this.particles.push({
+      x: x + (Math.random() - 0.5) * 20,
+      y: y + (Math.random() - 0.5) * 20,
+      vx: 0,
+      vy: -1 - Math.random(),
+      life: 10,
+      maxLife: 10,
+      size: 2 + ratio * 4,
+      color: `hsl(${ratio * 120}, 70%, 50%)`,
+      type: 'charge',
+      gravity: 0,
+      decay: 0.9
+    });
+  },
+  
+  emitMissileSmoke(x, y) {
+    this.particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: (Math.random() - 0.5) * 0.5,
+      life: 20,
+      maxLife: 20,
+      size: 3,
+      color: 'rgba(150,150,150,0.4)',
+      type: 'smoke',
+      gravity: 0,
+      decay: 0.95
+    });
+  },
+  
   update() {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
@@ -135,6 +166,11 @@ const Particles = {
         ctx.beginPath();
         ctx.arc(x, y, p.size * (1 + (1-alpha) * 3), 0, Math.PI * 2);
         ctx.stroke();
+      } else if (p.type === 'charge') {
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(x, y, p.size * alpha, 0, Math.PI * 2);
+        ctx.fill();
       } else {
         ctx.fillStyle = p.color;
         ctx.beginPath();

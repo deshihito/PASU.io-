@@ -31,7 +31,6 @@ const BULLET_SPEED = 15;
 const BULLET_LIFE = 120;
 
 // ===== ブロックマップ =====
-// 0=空, 1=壁, 2=氷, 3=ジャンプ台
 const BLOCKS = [];
 const MAP_COLS = Math.ceil(GAME_WIDTH / BLOCK_SIZE);
 const MAP_ROWS = Math.ceil(GAME_HEIGHT / BLOCK_SIZE);
@@ -65,15 +64,26 @@ function initMap() {
     { c: 65, r: 14, w: 5 }, { c: 22, r: 5, w: 4 }
   ];
   for (const p of platforms) {
-    for (let i = 0; i < p.w; i++) {
-      BLOCKS.push({ c: p.c + i, r: p.r, type: 1 });
+    for (let i = 0; i < p.w; i++) BLOCKS.push({ c: p.c + i, r: p.r, type: 1 });
+  }
+  // ブッシュ（type: 4）
+  const bushes = [
+    { c: 10, r: 16, w: 4, h: 2 }, { c: 25, r: 13, w: 3, h: 3 },
+    { c: 45, r: 15, w: 5, h: 2 }, { c: 55, r: 11, w: 4, h: 3 },
+    { c: 18, r: 17, w: 3, h: 2 }, { c: 38, r: 14, w: 4, h: 2 }
+  ];
+  for (const bush of bushes) {
+    for (let i = 0; i < bush.w; i++) {
+      for (let j = 0; j < bush.h; j++) {
+        BLOCKS.push({ c: bush.c + i, r: bush.r + j, type: 4 });
+      }
     }
   }
 }
 
 initMap();
 
-// ===== レバー =====
+// ===== レバー（トグル式） =====
 const LEVERS = [
   { id: 'lever1', x: 400, y: 520, w: 30, h: 40, pulled: false, targetDoor: 'door1' },
   { id: 'lever2', x: 1200, y: 360, w: 30, h: 40, pulled: false, targetDoor: 'door2' }
@@ -92,11 +102,16 @@ const MOVABLES = [
   { id: 'box3', x: 1600, y: 300, w: 35, h: 60, vx: 0, vy: 0, heldBy: null }
 ];
 
-// ===== 休憩所 =====
-const REST_AREA = { x: 60, y: 80, w: 120, h: 120 };
+// ===== ワープパッド =====
+const WARP_PADS = [
+  { x: 500, y: 520, w: 50, h: 10 },
+  { x: 1500, y: 520, w: 50, h: 10 },
+  { x: 2500, y: 520, w: 50, h: 10 }
+];
 
-// ===== ワープポイント =====
-const WARP_POINTS = [{ x: 140, y: 360, w: 40, h: 40 }];
+// ===== 休憩所ルーム（別エリア） =====
+const REST_ZONE = { x: 3200, y: 0, w: 600, h: 800 };
+const SHOP_NPC = { x: 3450, y: 400, w: 40, h: 50 };
 
 // ===== マップデータ =====
 const MAPS = [
@@ -124,7 +139,11 @@ function createPlayer(id) {
     facing: 1,
     mouseX: 0, mouseY: 0,
     onGround: false,
-    invincible: 0
+    invincible: 0,
+    slots: [null, null, null, null],
+    returning: false,
+    returnTimer: 0,
+    inBush: false
   };
 }
 
@@ -144,25 +163,9 @@ function lineBlockIntersect(x1, y1, x2, y2) {
     const cx = Math.floor(px / BLOCK_SIZE);
     const cy = Math.floor(py / BLOCK_SIZE);
     const b = blockAt(cx, cy);
-    if (b && b.type === 1) {
-      return { x: px, y: py, block: b };
-    }
+    if (b && b.type === 1) return { x: px, y: py, block: b };
   }
   return null;
-}
-
-function rectBlocksIntersect(rx, ry, rw, rh) {
-  const c1 = Math.floor(rx / BLOCK_SIZE);
-  const c2 = Math.floor((rx + rw) / BLOCK_SIZE);
-  const r1 = Math.floor(ry / BLOCK_SIZE);
-  const r2 = Math.floor((ry + rh) / BLOCK_SIZE);
-  for (let c = c1; c <= c2; c++) {
-    for (let r = r1; r <= r2; r++) {
-      const b = blockAt(c, r);
-      if (b && b.type === 1) return true;
-    }
-  }
-  return false;
 }
 
 function resolveBlockCollision(p) {
@@ -172,11 +175,18 @@ function resolveBlockCollision(p) {
   const r2 = Math.floor((p.y + p.height) / BLOCK_SIZE);
   
   p.onGround = false;
+  p.inBush = false;
   
   for (let c = c1; c <= c2; c++) {
     for (let r = r1; r <= r2; r++) {
       const b = blockAt(c, r);
-      if (!b || b.type !== 1) continue;
+      if (!b) continue;
+      
+      if (b.type === 4) {
+        p.inBush = true;
+        continue;
+      }
+      if (b.type !== 1) continue;
       
       const bx = b.c * BLOCK_SIZE;
       const by = b.r * BLOCK_SIZE;
@@ -189,18 +199,13 @@ function resolveBlockCollision(p) {
       const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
       
       if (minOverlap === overlapTop && p.vy >= 0) {
-        p.y = by - p.height;
-        p.vy = 0;
-        p.onGround = true;
+        p.y = by - p.height; p.vy = 0; p.onGround = true;
       } else if (minOverlap === overlapBottom && p.vy < 0) {
-        p.y = by + BLOCK_SIZE;
-        p.vy = 0;
+        p.y = by + BLOCK_SIZE; p.vy = 0;
       } else if (minOverlap === overlapLeft && p.vx > 0) {
-        p.x = bx - p.width;
-        p.vx = 0;
+        p.x = bx - p.width; p.vx = 0;
       } else if (minOverlap === overlapRight && p.vx < 0) {
-        p.x = bx + BLOCK_SIZE;
-        p.vx = 0;
+        p.x = bx + BLOCK_SIZE; p.vx = 0;
       }
     }
   }
@@ -234,9 +239,8 @@ function updateHook(p) {
     const dy = p.hook.y - sy;
     const dist = Math.sqrt(dx*dx + dy*dy);
     if (dist > 15) {
-      const pull = 0.025;
-      p.vx += dx * pull;
-      p.vy += dy * pull;
+      p.vx += dx * 0.025;
+      p.vy += dy * 0.025;
       p.state = 'hooked';
     } else {
       p.hook.active = false;
@@ -258,9 +262,8 @@ function updateHand(p) {
     
     if (p.hand.len > HAND_MAX_LEN) { p.hand.active = false; p.state = 'normal'; return; }
     
-    // レバーに当たったか
+    // レバー
     for (const lever of LEVERS) {
-      if (lever.pulled) continue;
       if (p.hand.x >= lever.x && p.hand.x <= lever.x + lever.w &&
           p.hand.y >= lever.y && p.hand.y <= lever.y + lever.h) {
         p.hand.attached = true;
@@ -273,7 +276,7 @@ function updateHand(p) {
       }
     }
     
-    // 動かせる物体に当たったか
+    // 動かせる物体
     for (const mv of MOVABLES) {
       if (mv.heldBy && mv.heldBy !== p.id) continue;
       if (p.hand.x >= mv.x && p.hand.x <= mv.x + mv.w &&
@@ -289,49 +292,39 @@ function updateHand(p) {
       }
     }
     
-    // 壁に当たったか
+    // 壁
     const hit = lineBlockIntersect(sx, sy, p.hand.x, p.hand.y);
     if (hit) {
       p.hand.attached = true;
       p.hand.x = hit.x;
       p.hand.y = hit.y;
       p.hand.targetType = 'wall';
-      p.hand.targetId = null;
       p.state = 'hand_mode';
       return;
     }
     
-    if (p.hand.x < 0 || p.hand.x > GAME_WIDTH || p.hand.y < 0 || p.hand.y > GAME_HEIGHT) {
+    if (p.hand.x < 0 || p.hand.x > GAME_WIDTH || p.hook.y < 0 || p.hand.y > GAME_HEIGHT) {
       p.hand.active = false; p.state = 'normal';
     }
   } else {
-    // 掴んでいる状態
     if (p.hand.targetType === 'lever') {
-      // レバーを引く（A/Dで角度変更＝引く方向）
       const lever = LEVERS.find(l => l.id === p.hand.targetId);
       if (lever) {
         const dx = lever.x + lever.w/2 - sx;
         const dy = lever.y + lever.h/2 - sy;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        
-        // プレイヤーが動くとレバーも引かれる
         if (dist > 60) {
-          // 十分引いたらレバーON
-          if (!lever.pulled) {
-            lever.pulled = true;
-            const door = DOORS.find(d => d.id === lever.targetDoor);
-            if (door) door.open = true;
-          }
+          lever.pulled = !lever.pulled;
+          const door = DOORS.find(d => d.id === lever.targetDoor);
+          if (door) door.open = lever.pulled;
           p.hand.active = false;
           p.state = 'normal';
         } else {
-          // 引っ張られている感じ
           p.vx += dx * 0.01;
           p.vy += dy * 0.01;
         }
       }
     } else if (p.hand.targetType === 'movable') {
-      // 物体を掴んで運ぶ
       const mv = MOVABLES.find(m => m.id === p.hand.targetId);
       if (mv) {
         const targetX = sx + Math.cos(p.hand.moveAngle * Math.PI / 180) * 50;
@@ -342,16 +335,8 @@ function updateHand(p) {
         mv.vy = p.vy * 0.5;
         p.hand.x = mv.x + mv.w/2;
         p.hand.y = mv.y + mv.h/2;
-        
-        // A/Dでハンドの角度変更＝物体の運び方向
-        if (p.hand.moveAngle !== undefined) {
-          const rad = p.hand.moveAngle * Math.PI / 180;
-          mv.vx += Math.cos(rad) * 0.3;
-          mv.vy += Math.sin(rad) * 0.3;
-        }
       }
     } else if (p.hand.targetType === 'wall') {
-      // 壁に張り付き（引っ張り効果なし）
       const dx = p.hand.x - sx;
       const dy = p.hand.y - sy;
       const dist = Math.sqrt(dx*dx + dy*dy);
@@ -371,13 +356,11 @@ function updateMovables() {
         mv.heldBy = null;
       }
     }
-    
     if (!mv.heldBy) {
       mv.vy += GRAVITY;
       mv.x += mv.vx;
       mv.y += mv.vy;
       
-      // 床判定
       const c1 = Math.floor(mv.x / BLOCK_SIZE);
       const c2 = Math.floor((mv.x + mv.w) / BLOCK_SIZE);
       const r1 = Math.floor(mv.y / BLOCK_SIZE);
@@ -395,7 +378,6 @@ function updateMovables() {
           }
         }
       }
-      
       mv.vx *= 0.9;
       if (Math.abs(mv.vx) < 0.1) mv.vx = 0;
     }
@@ -404,9 +386,8 @@ function updateMovables() {
 
 function updateDoors() {
   for (const d of DOORS) {
-    if (d.open && d.openHeight < d.h) {
-      d.openHeight += 2;
-    }
+    if (d.open && d.openHeight < d.h) d.openHeight += 2;
+    if (!d.open && d.openHeight > 0) d.openHeight -= 2;
   }
 }
 
@@ -440,27 +421,55 @@ function updateBullets() {
   }
 }
 
+function checkWarpPads(p) {
+  if (p.zone !== 'battle') return;
+  for (const wp of WARP_PADS) {
+    if (p.x + p.width > wp.x && p.x < wp.x + wp.w &&
+        p.y + p.height > wp.y && p.y < wp.y + wp.h) {
+      const sp = MAPS[0].spawnPoints[Math.floor(Math.random() * MAPS[0].spawnPoints.length)];
+      p.x = sp.x + (Math.random() - 0.5) * 100;
+      p.y = sp.y;
+      p.vx = 0; p.vy = 0;
+      break;
+    }
+  }
+}
+
 function updatePhysics() {
   for (const id in players) {
     const p = players[id];
     p.invincible = Math.max(0, p.invincible - 1);
     
-    if (p.zone === 'rest') {
-      p.x += p.vx; p.y += p.vy;
-      p.vx *= 0.9; p.vy *= 0.9;
-      p.x = Math.max(0, Math.min(200, p.x));
-      p.y = Math.max(0, Math.min(400, p.y));
+    // 帰還タイマー
+    if (p.returning) {
+      p.returnTimer--;
+      if (p.returnTimer <= 0) {
+        p.returning = false;
+        p.zone = 'rest';
+        p.x = REST_ZONE.x + REST_ZONE.w/2;
+        p.y = REST_ZONE.y + REST_ZONE.h/2;
+        p.vx = 0; p.vy = 0;
+        p.hook.active = false;
+        p.hand.active = false;
+        p.state = 'normal';
+      }
       continue;
     }
     
-    if (p.state !== 'hand_mode') {
-      p.vy += GRAVITY;
+    if (p.zone === 'rest') {
+      p.x += p.vx; p.y += p.vy;
+      p.vx *= 0.9; p.vy *= 0.9;
+      p.x = Math.max(REST_ZONE.x, Math.min(REST_ZONE.x + REST_ZONE.w - p.width, p.x));
+      p.y = Math.max(REST_ZONE.y, Math.min(REST_ZONE.y + REST_ZONE.h - p.height, p.y));
+      continue;
     }
     
+    if (p.state !== 'hand_mode') p.vy += GRAVITY;
     p.x += p.vx;
     p.y += p.vy;
     
     resolveBlockCollision(p);
+    checkWarpPads(p);
     
     if (p.x < 0) { p.x = 0; p.vx = 0; }
     if (p.x > GAME_WIDTH - p.width) { p.x = GAME_WIDTH - p.width; p.vx = 0; }
@@ -500,8 +509,9 @@ setInterval(() => {
   io.emit('state', {
     players, blocks: BLOCKS, bullets,
     levers: LEVERS, doors: DOORS, movables: MOVABLES,
-    warpPoints: WARP_POINTS, restArea: REST_AREA,
-    maps: MAPS, blockSize: BLOCK_SIZE
+    warpPads: WARP_PADS, restZone: REST_ZONE,
+    shopNpc: SHOP_NPC, maps: MAPS,
+    blockSize: BLOCK_SIZE
   });
 }, 1000 / 60);
 
@@ -518,6 +528,9 @@ io.on('connection', (socket) => {
     
     const speed = 1.0;
     
+    // 帰還中は操作不可
+    if (p.returning) return;
+    
     if (p.zone === 'rest') {
       if (data.left) p.vx -= speed;
       if (data.right) p.vx += speed;
@@ -530,7 +543,6 @@ io.on('connection', (socket) => {
       if (data.left) p.hand.moveAngle -= 3;
       if (data.right) p.hand.moveAngle += 3;
       
-      // Wでハンドモード解除
       if (data.pasta) {
         const mv = MOVABLES.find(m => m.id === p.hand.targetId);
         if (mv) mv.heldBy = null;
@@ -538,7 +550,8 @@ io.on('connection', (socket) => {
         p.state = 'normal';
       }
       
-      if (data.attack) {
+      // 休憩所では射撃不可
+      if (data.attack && p.x < REST_ZONE.x) {
         const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
         bullets.push({
           x: p.x + p.width/2,
@@ -561,7 +574,7 @@ io.on('connection', (socket) => {
       if (data.right) { p.vx += speed; p.facing = 1; }
     }
     
-    // S: パスタフック（マウス方向）- 再度押すと取り消し
+    // S: フック（トグル）
     if (data.hook) {
       if (p.hook.active) {
         p.hook.active = false;
@@ -575,7 +588,7 @@ io.on('connection', (socket) => {
       }
     }
     
-    // W: パスタハンド（マウス方向）
+    // W: ハンド
     if (data.pasta && p.state !== 'hand_mode') {
       if (p.hand.active && !p.hand.attached) {
         p.hand.active = false;
@@ -585,12 +598,11 @@ io.on('connection', (socket) => {
         p.hand.attached = false;
         p.hand.len = 0;
         p.hand.angle = angle * 180 / Math.PI;
-        p.hand.targetType = null;
-        p.hand.targetId = null;
       }
     }
     
-    if (data.attack && p.state === 'normal') {
+    // スペース: 攻撃（休憩所では不可）
+    if (data.attack && p.state === 'normal' && p.x < REST_ZONE.x) {
       const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
       bullets.push({
         x: p.x + p.width/2,
@@ -603,14 +615,11 @@ io.on('connection', (socket) => {
       });
     }
     
-    if (data.rest) {
-      p.zone = 'rest';
-      p.x = REST_AREA.x + REST_AREA.w/2;
-      p.y = REST_AREA.y + REST_AREA.h/2;
+    // H: 帰還（3秒ディレイ）
+    if (data.rest && !p.returning && p.zone !== 'rest') {
+      p.returning = true;
+      p.returnTimer = 180; // 3秒 (60fps)
       p.vx = 0; p.vy = 0;
-      p.hook.active = false;
-      p.hand.active = false;
-      p.state = 'normal';
     }
   });
   
@@ -618,6 +627,7 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p) return;
     p.zone = 'battle';
+    p.returning = false;
     const sp = MAPS[mapIndex].spawnPoints[spawnIndex];
     p.x = sp.x; p.y = sp.y;
     p.vx = 0; p.vy = 0;

@@ -200,15 +200,11 @@ function updateBR(room) {
   room.safeZone.h -= shrinkRate * 2;
   
   // 安全圏外ダメージ
-  for (const id in room.players) {
-    const p = room.players[id];
-    if (p.x < room.safeZone.x || p.x + p.width > room.safeZone.x + room.safeZone.w ||
-        p.y < room.safeZone.y || p.y + p.height > room.safeZone.y + room.safeZone.h) {
-      if (p.invincible <= 0) {
-        p.hp -= 2;
-        p.invincible = 30;
-      }
-    }
+  for (const id of room.players) {
+    // room.playersはsocketIdの配列なので、playersオブジェクトから取得
+    // この関数はserver.jsから呼ばれ、playersはグローバルではないので
+    // 実際にはserver.js側で処理するか、playersを渡す必要がある
+    // 現状維持：server.jsのゲームループで個別に処理
   }
 }
 

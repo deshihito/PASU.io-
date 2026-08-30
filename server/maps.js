@@ -1,9 +1,10 @@
-const BLOCK_SIZE = 40;
-const GAME_WIDTH = 3000;
-const GAME_HEIGHT = 800;
+const C = require('../shared/constants');
+
+const BLOCK_SIZE = C.BLOCK_SIZE;
+const GAME_WIDTH = C.GAME_WIDTH;
+const GAME_HEIGHT = C.GAME_HEIGHT;
 const MAP_COLS = Math.ceil(GAME_WIDTH / BLOCK_SIZE);
 const MAP_ROWS = Math.ceil(GAME_HEIGHT / BLOCK_SIZE);
-
 const BLOCKS = [];
 
 function initMap() {
@@ -11,20 +12,20 @@ function initMap() {
   
   // 床
   for (let x = 0; x < MAP_COLS; x++) {
-    BLOCKS.push({ c: x, r: MAP_ROWS - 1, type: 1 });
-    BLOCKS.push({ c: x, r: MAP_ROWS - 2, type: 1 });
+    BLOCKS.push({ c: x, r: MAP_ROWS - 1, type: C.BLOCK_WALL });
+    BLOCKS.push({ c: x, r: MAP_ROWS - 2, type: C.BLOCK_WALL });
   }
   // 天井
   for (let x = 0; x < MAP_COLS; x++) {
-    BLOCKS.push({ c: x, r: 0, type: 1 });
-    BLOCKS.push({ c: x, r: 1, type: 1 });
+    BLOCKS.push({ c: x, r: 0, type: C.BLOCK_WALL });
+    BLOCKS.push({ c: x, r: 1, type: C.BLOCK_WALL });
   }
   // 左右壁
   for (let y = 2; y < MAP_ROWS - 2; y++) {
-    BLOCKS.push({ c: 0, r: y, type: 1 });
-    BLOCKS.push({ c: 1, r: y, type: 1 });
-    BLOCKS.push({ c: MAP_COLS - 1, r: y, type: 1 });
-    BLOCKS.push({ c: MAP_COLS - 2, r: y, type: 1 });
+    BLOCKS.push({ c: 0, r: y, type: C.BLOCK_WALL });
+    BLOCKS.push({ c: 1, r: y, type: C.BLOCK_WALL });
+    BLOCKS.push({ c: MAP_COLS - 1, r: y, type: C.BLOCK_WALL });
+    BLOCKS.push({ c: MAP_COLS - 2, r: y, type: C.BLOCK_WALL });
   }
   
   // プラットフォーム
@@ -38,11 +39,11 @@ function initMap() {
   ];
   for (const p of platforms) {
     for (let i = 0; i < p.w; i++) {
-      BLOCKS.push({ c: p.c + i, r: p.r, type: 1 });
+      BLOCKS.push({ c: p.c + i, r: p.r, type: C.BLOCK_WALL });
     }
   }
   
-  // ブッシュ（type: 4）
+  // ブッシュ
   const bushes = [
     { c: 10, r: 16, w: 4, h: 2 }, { c: 25, r: 13, w: 3, h: 3 },
     { c: 45, r: 15, w: 5, h: 2 }, { c: 55, r: 11, w: 4, h: 3 },
@@ -51,9 +52,28 @@ function initMap() {
   for (const bush of bushes) {
     for (let i = 0; i < bush.w; i++) {
       for (let j = 0; j < bush.h; j++) {
-        BLOCKS.push({ c: bush.c + i, r: bush.r + j, type: 4 });
+        BLOCKS.push({ c: bush.c + i, r: bush.r + j, type: C.BLOCK_BUSH });
       }
     }
+  }
+  
+  // ジャンプ台
+  BLOCKS.push({ c: 30, r: 16, type: C.BLOCK_JUMP });
+  BLOCKS.push({ c: 31, r: 16, type: C.BLOCK_JUMP });
+  BLOCKS.push({ c: 48, r: 12, type: C.BLOCK_JUMP });
+  
+  // 氷
+  for (let i = 0; i < 5; i++) {
+    BLOCKS.push({ c: 60 + i, r: 16, type: C.BLOCK_ICE });
+  }
+  
+  // トゲ
+  BLOCKS.push({ c: 12, r: 15, type: C.BLOCK_SPIKE });
+  BLOCKS.push({ c: 13, r: 15, type: C.BLOCK_SPIKE });
+  
+  // 風（右向き）
+  for (let i = 0; i < 3; i++) {
+    BLOCKS.push({ c: 42 + i, r: 8, type: C.BLOCK_WIND_RIGHT });
   }
 }
 
@@ -72,10 +92,8 @@ function lineBlockIntersect(x1, y1, x2, y2) {
     const t = i / steps;
     const px = x1 + (x2 - x1) * t;
     const py = y1 + (y2 - y1) * t;
-    const cx = Math.floor(px / BLOCK_SIZE);
-    const cy = Math.floor(py / BLOCK_SIZE);
-    const b = blockAt(cx, cy);
-    if (b && b.type === 1) return { x: px, y: py, block: b };
+    const b = blockAt(Math.floor(px/BLOCK_SIZE), Math.floor(py/BLOCK_SIZE));
+    if (b && b.type === C.BLOCK_WALL) return { x: px, y: py, block: b };
   }
   return null;
 }
@@ -88,7 +106,7 @@ function rectBlocksIntersect(rx, ry, rw, rh) {
   for (let c = c1; c <= c2; c++) {
     for (let r = r1; r <= r2; r++) {
       const b = blockAt(c, r);
-      if (b && b.type === 1) return true;
+      if (b && b.type === C.BLOCK_WALL) return true;
     }
   }
   return false;

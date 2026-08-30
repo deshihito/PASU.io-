@@ -8,7 +8,7 @@ const hudEl = document.getElementById('hud');
 const mapSelectEl = document.getElementById('mapSelect');
 const mapListEl = document.getElementById('mapList');
 
-// サーバーURL（本番ではRenderのURLに変更）
+// 仮サーバURL
 const SERVER_URL = 'http://localhost:3000';
 const socket = io(SERVER_URL);
 
@@ -33,7 +33,7 @@ window.addEventListener('keyup', (e) => {
 
 socket.on('connect', () => {
   myId = socket.id;
-  statusEl.textContent = '接続完了！';
+  statusEl.textContent = '接続完了';
   statusEl.style.color = '#0f0';
   hudEl.style.display = 'flex';
 });

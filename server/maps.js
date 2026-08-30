@@ -75,6 +75,23 @@ function initMap() {
   for (let i = 0; i < 3; i++) {
     BLOCKS.push({ c: 42 + i, r: 8, type: C.BLOCK_WIND_RIGHT });
   }
+  
+  // 暗闇エリア
+  for (let i = 0; i < 4; i++) {
+    for (let j = 0; j < 3; j++) {
+      BLOCKS.push({ c: 16 + i, r: 10 + j, type: C.BLOCK_DARKNESS });
+    }
+  }
+  
+  // 崩落ブロック
+  BLOCKS.push({ c: 24, r: 11, type: C.BLOCK_COLLAPSE });
+  BLOCKS.push({ c: 25, r: 11, type: C.BLOCK_COLLAPSE });
+  BLOCKS.push({ c: 24, r: 12, type: C.BLOCK_COLLAPSE });
+  
+  // 回復ゾーン
+  for (let i = 0; i < 3; i++) {
+    BLOCKS.push({ c: 52 + i, r: 14, type: C.BLOCK_HEAL });
+  }
 }
 
 initMap();
@@ -93,6 +110,28 @@ function lineBlockIntersect(x1, y1, x2, y2) {
     const px = x1 + (x2 - x1) * t;
     const py = y1 + (y2 - y1) * t;
     const b = blockAt(Math.floor(px/BLOCK_SIZE), Math.floor(py/BLOCK_SIZE));
+    if (b && b.type === C.BLOCK_WALL) return { x: px, y: py, block: b };
+  }
+  return null;
+}
+
+// フック貫通防止：プレイヤーの当たり判定内のブロックを無視
+function lineBlockIntersectSafe(x1, y1, x2, y2, player) {
+  const steps = Math.ceil(Math.max(Math.abs(x2-x1), Math.abs(y2-y1)) / (BLOCK_SIZE/2));
+  const playerC1 = Math.floor(player.x / BLOCK_SIZE);
+  const playerC2 = Math.floor((player.x + player.width) / BLOCK_SIZE);
+  const playerR1 = Math.floor(player.y / BLOCK_SIZE);
+  const playerR2 = Math.floor((player.y + player.height) / BLOCK_SIZE);
+  
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const px = x1 + (x2 - x1) * t;
+    const py = y1 + (y2 - y1) * t;
+    const c = Math.floor(px/BLOCK_SIZE);
+    const r = Math.floor(py/BLOCK_SIZE);
+    // プレイヤーの当たり判定内ならスキップ
+    if (c >= playerC1 && c <= playerC2 && r >= playerR1 && r <= playerR2) continue;
+    const b = blockAt(c, r);
     if (b && b.type === C.BLOCK_WALL) return { x: px, y: py, block: b };
   }
   return null;
@@ -121,5 +160,6 @@ module.exports = {
   MAP_ROWS,
   blockAt,
   lineBlockIntersect,
+  lineBlockIntersectSafe,
   rectBlocksIntersect
 };

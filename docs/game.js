@@ -20,6 +20,9 @@ let bullets = [];
 let levers = [];
 let doors = [];
 let movables = [];
+let warpPads = [];
+let restZone = {};
+let shopNpc = {};
 let myId = null;
 let cameraX = 0;
 let cameraY = 0;
@@ -31,6 +34,7 @@ let mouseY = 0;
 let joystickActive = false;
 let joystickDX = 0;
 let isMobile = false;
+let returningTimer = 0;
 
 window.addEventListener('keydown', (e) => {
   keys[e.key.toLowerCase()] = true;
@@ -42,6 +46,7 @@ window.addEventListener('keyup', (e) => {
   keys[e.key.toLowerCase()] = false;
 });
 
+// PCマウス照準
 canvas.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
@@ -50,14 +55,35 @@ canvas.addEventListener('mousemove', (e) => {
   mouseY = (e.clientY - rect.top) * scaleY + cameraY;
 });
 
+// スマホ照準：右半分＆ボタン以外でタッチ
+canvas.addEventListener('touchstart', (e) => {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
+    const rect = canvas.getBoundingClientRect();
+    const cx = (t.clientX - rect.left) * (canvas.width / rect.width);
+    const cy = (t.clientY - rect.top) * (canvas.height / rect.height);
+    
+    // 右半分かつボタンエリア以外なら照準更新
+    if (cx > canvas.width * 0.35 && cy < canvas.height - 180) {
+      mouseX = cx + cameraX;
+      mouseY = cy + cameraY;
+    }
+  }
+}, { passive: false });
+
 canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
-  const touch = e.touches[0];
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  mouseX = (touch.clientX - rect.left) * scaleX + cameraX;
-  mouseY = (touch.clientY - rect.top) * scaleY + cameraY;
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
+    const rect = canvas.getBoundingClientRect();
+    const cx = (t.clientX - rect.left) * (canvas.width / rect.width);
+    const cy = (t.clientY - rect.top) * (canvas.height / rect.height);
+    
+    if (cx > canvas.width * 0.35 && cy < canvas.height - 180) {
+      mouseX = cx + cameraX;
+      mouseY = cy + cameraY;
+    }
+  }
 }, { passive: false });
 
 if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
@@ -88,7 +114,6 @@ joystickArea.addEventListener('touchend', () => {
 function updateJoystick(touch) {
   const rect = joystickArea.getBoundingClientRect();
   const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
   const dx = touch.clientX - centerX;
   const maxDist = 35;
   const dist = Math.min(Math.sqrt(dx*dx), maxDist);
@@ -142,6 +167,9 @@ socket.on('state', (data) => {
   levers = data.levers;
   doors = data.doors;
   movables = data.movables;
+  warpPads = data.warpPads;
+  restZone = data.restZone;
+  shopNpc = data.shopNpc;
   blockSize = data.blockSize || 40;
   
   if (players[myId]) {
@@ -149,6 +177,8 @@ socket.on('state', (data) => {
     hpEl.textContent = Math.round(p.hp);
     coinsEl.textContent = p.coins;
     zoneEl.textContent = p.zone === 'rest' ? 'REST' : 'BATTLE';
+    returningTimer = p.returnTimer || 0;
+    
     if (p.zone === 'rest') showMapSelect(data.maps);
     else hideMapSelect();
   }
@@ -189,17 +219,28 @@ function updateCamera() {
     const p = players[myId];
     cameraX = p.x - canvas.width / 2 + p.width / 2;
     cameraY = p.y - canvas.height / 2 + p.height / 2;
-    cameraX = Math.max(0, Math.min(cameraX, 3000 - canvas.width));
-    cameraY = Math.max(0, Math.min(cameraY, 800 - canvas.height));
+    
+    if (p.zone === 'rest') {
+      cameraX = restZone.x + restZone.w/2 - canvas.width/2;
+      cameraY = restZone.y + restZone.h/2 - canvas.height/2;
+    } else {
+      cameraX = Math.max(0, Math.min(cameraX, 3000 - canvas.width));
+      cameraY = Math.max(0, Math.min(cameraY, 800 - canvas.height));
+    }
   }
 }
 
-// ===== パスタ戦車描画 =====
 function drawPastaTank(p, isMe) {
+  // ブッシュ内は自分以外見えない
+  if (p.inBush && !isMe) return;
+  
   const x = p.x - cameraX;
   const y = p.y - cameraY;
   const w = p.width;
   const h = p.height;
+  
+  const alpha = p.inBush ? 0.4 : 1;
+  ctx.globalAlpha = alpha;
   
   ctx.fillStyle = 'rgba(0,0,0,0.1)';
   ctx.beginPath();
@@ -296,6 +337,19 @@ function drawPastaTank(p, isMe) {
   ctx.fillRect(x + w/2 - barW/2, y - 8, barW, barH);
   ctx.fillStyle = p.hp > 50 ? '#34c759' : p.hp > 25 ? '#ff9500' : '#e94560';
   ctx.fillRect(x + w/2 - barW/2, y - 8, barW * (p.hp / p.maxHp), barH);
+  
+  // 武器スロット雛形
+  if (isMe) {
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(x + w/2 - 40 + i * 22, y + h + 4, 18, 18);
+      ctx.strokeStyle = p.slots[i] ? '#34c759' : '#c7c7cc';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + w/2 - 40 + i * 22, y + h + 4, 18, 18);
+    }
+  }
+  
+  ctx.globalAlpha = 1;
 }
 
 function drawHook(p) {
@@ -332,13 +386,9 @@ function drawHand(p) {
   ctx.lineTo(ex, ey);
   ctx.lineWidth = 4;
   
-  if (p.hand.targetType === 'lever') {
-    ctx.strokeStyle = '#5856d6';
-  } else if (p.hand.targetType === 'movable') {
-    ctx.strokeStyle = '#af52de';
-  } else {
-    ctx.strokeStyle = '#ff2d55';
-  }
+  if (p.hand.targetType === 'lever') ctx.strokeStyle = '#5856d6';
+  else if (p.hand.targetType === 'movable') ctx.strokeStyle = '#af52de';
+  else ctx.strokeStyle = '#ff2d55';
   
   ctx.setLineDash([4, 4]);
   ctx.stroke();
@@ -386,10 +436,24 @@ function drawBlocks() {
       ctx.strokeStyle = '#c7c7cc';
       ctx.lineWidth = 1;
       ctx.strokeRect(x, y, blockSize, blockSize);
-      
       ctx.fillStyle = '#d1d1d6';
       ctx.fillRect(x + 4, y + 4, blockSize - 8, 3);
       ctx.fillRect(x + 4, y + blockSize/2, blockSize - 8, 3);
+    } else if (b.type === 4) {
+      // ブッシュ
+      ctx.fillStyle = '#34c759';
+      ctx.fillRect(x, y, blockSize, blockSize);
+      ctx.fillStyle = '#30d158';
+      ctx.beginPath();
+      ctx.arc(x + blockSize/2, y + blockSize/2, blockSize/2 - 2, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#248a3d';
+      ctx.beginPath();
+      ctx.arc(x + blockSize/3, y + blockSize/3, 4, 0, Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x + blockSize*0.7, y + blockSize*0.6, 3, 0, Math.PI*2);
+      ctx.fill();
     }
   }
 }
@@ -399,11 +463,9 @@ function drawLevers() {
     const x = l.x - cameraX;
     const y = l.y - cameraY;
     
-    // 台座
     ctx.fillStyle = '#8e8e93';
     ctx.fillRect(x, y + l.h - 8, l.w, 8);
     
-    // レバー
     ctx.save();
     ctx.translate(x + l.w/2, y + l.h - 8);
     const angle = l.pulled ? Math.PI / 3 : -Math.PI / 6;
@@ -412,7 +474,6 @@ function drawLevers() {
     ctx.fillStyle = l.pulled ? '#34c759' : '#ff9500';
     ctx.fillRect(-3, -30, 6, 30);
     
-    // 握り
     ctx.fillStyle = '#e94560';
     ctx.beginPath();
     ctx.arc(0, -30, 6, 0, Math.PI*2);
@@ -420,7 +481,6 @@ function drawLevers() {
     
     ctx.restore();
     
-    // ラベル
     ctx.fillStyle = '#8e8e93';
     ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
@@ -434,23 +494,18 @@ function drawDoors() {
     const y = d.y - cameraY;
     
     if (d.openHeight >= d.h) continue;
-    
     const drawH = d.h - d.openHeight;
     
-    // ドア枠
     ctx.fillStyle = '#48484a';
     ctx.fillRect(x - 2, y - 2, d.w + 4, d.h + 4);
     
-    // ドア本体
     ctx.fillStyle = '#2c2c2e';
     ctx.fillRect(x, y, d.w, drawH);
     
-    // 模様
     ctx.strokeStyle = '#636366';
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 4, y + 4, d.w - 8, drawH - 8);
     
-    // 開いた部分は空
     if (d.openHeight > 0) {
       ctx.fillStyle = '#f5f5f7';
       ctx.fillRect(x, y + drawH, d.w, d.openHeight);
@@ -470,13 +525,93 @@ function drawMovables() {
     ctx.lineWidth = 2;
     ctx.strokeRect(x + 3, y + 3, m.w - 6, m.h - 6);
     
-    // 掴まれている印
     if (m.heldBy) {
       ctx.fillStyle = '#fff';
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('✋', x + m.w/2, y + m.h/2 + 3);
     }
+  }
+}
+
+function drawWarpPads() {
+  for (const wp of warpPads) {
+    const x = wp.x - cameraX;
+    const y = wp.y - cameraY;
+    
+    ctx.fillStyle = 'rgba(0, 122, 255, 0.3)';
+    ctx.fillRect(x, y, wp.w, wp.h);
+    ctx.strokeStyle = '#007aff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, wp.w, wp.h);
+    
+    ctx.fillStyle = '#007aff';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('WARP', x + wp.w/2, y + wp.h/2 + 3);
+  }
+}
+
+function drawRestZone() {
+  if (!restZone.x) return;
+  const x = restZone.x - cameraX;
+  const y = restZone.y - cameraY;
+  
+  ctx.fillStyle = '#f5f5f7';
+  ctx.fillRect(x, y, restZone.w, restZone.h);
+  
+  ctx.strokeStyle = '#e5e5ea';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, restZone.w, restZone.h);
+  
+  // 床
+  ctx.fillStyle = '#e5e5ea';
+  ctx.fillRect(x, y + restZone.h - 40, restZone.w, 40);
+  
+  // ショップNPC
+  if (shopNpc.x) {
+    const nx = shopNpc.x - cameraX;
+    const ny = shopNpc.y - cameraY;
+    
+    ctx.fillStyle = '#ff9500';
+    ctx.fillRect(nx, ny, shopNpc.w, shopNpc.h);
+    
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('SHOP', nx + shopNpc.w/2, ny - 4);
+    
+    // 吹き出し
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.roundRect(nx - 20, ny - 40, 80, 28, 6);
+    ctx.fill();
+    ctx.strokeStyle = '#c7c7cc';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#1d1d1f';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('いらっしゃい！', nx + 20, ny - 22);
+  }
+  
+  // スロット表示（休憩所のみ）
+  ctx.fillStyle = '#1d1d1f';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('WEAPON SLOTS', x + restZone.w/2, y + 30);
+  
+  for (let i = 0; i < 4; i++) {
+    const sx = x + restZone.w/2 - 70 + i * 38;
+    const sy = y + 45;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(sx, sy, 32, 32);
+    ctx.strokeStyle = '#c7c7cc';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx, sy, 32, 32);
+    
+    ctx.fillStyle = '#8e8e93';
+    ctx.font = '16px sans-serif';
+    ctx.fillText(`${i+1}`, sx + 16, sy + 22);
   }
 }
 
@@ -507,14 +642,43 @@ function drawMinimap() {
   ctx.lineWidth = 1;
   ctx.strokeRect(mx, my, mw, mh);
   
-  const scaleX = mw / 3000;
+  const scaleX = mw / 3600;
   const scaleY = mh / 800;
   
   for (const id in players) {
     const p = players[id];
+    if (p.inBush && id !== myId) continue;
     ctx.fillStyle = id === myId ? '#e94560' : '#34c759';
     ctx.fillRect(mx + p.x * scaleX, my + p.y * scaleY, 3, 3);
   }
+}
+
+function drawReturning() {
+  if (returningTimer <= 0) return;
+  const p = players[myId];
+  if (!p || !p.returning) return;
+  
+  const progress = 1 - (returningTimer / 180);
+  const barW = 200;
+  const barH = 20;
+  const bx = canvas.width/2 - barW/2;
+  const by = canvas.height/2 - 50;
+  
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('休憩所に帰還中...', canvas.width/2, by - 10);
+  
+  ctx.fillStyle = '#e5e5ea';
+  ctx.fillRect(bx, by, barW, barH);
+  ctx.fillStyle = '#e94560';
+  ctx.fillRect(bx, by, barW * progress, barH);
+  ctx.strokeStyle = '#c7c7cc';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(bx, by, barW, barH);
 }
 
 function draw() {
@@ -524,6 +688,8 @@ function draw() {
   drawDoors();
   drawLevers();
   drawMovables();
+  drawWarpPads();
+  drawRestZone();
   
   for (const id in players) {
     const p = players[id];
@@ -534,8 +700,10 @@ function draw() {
   
   drawBullets();
   drawMinimap();
+  drawReturning();
   
-  if (players[myId]) {
+  // 照準
+  if (players[myId] && !players[myId].returning) {
     const p = players[myId];
     const sx = p.x + p.width/2 - cameraX;
     const sy = p.y + p.height/2 - cameraY;

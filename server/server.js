@@ -49,7 +49,9 @@ const MAPS = [
 
 const players = {};
 const bullets = [];
+const traps = [];
 const globalKillLog = [];
+const killStreaks = {}; // 連続キル管理
 
 function createPlayer(id) {
   return {
@@ -73,7 +75,12 @@ function createPlayer(id) {
     dashCooldown: 0, lastDashDir: 0, dashCount: 0,
     speedBoost: 0, speedMult: 1,
     roomId: null, team: C.TEAM_NONE,
-    lastKeyTime: {}
+    lastKeyTime: {},
+    hookCooldown: 0,
+    chargeLevel: 0,
+    charging: false,
+    bufferedAttack: false,
+    airBrake: false
   };
 }
 
@@ -113,8 +120,12 @@ io.on('connection', (socket) => {
     const now = Date.now();
     const speed = p.speedBoost > 0 ? 1.0 * p.speedMult : 1.0;
     
+    // 帰還キャンセル
     if (p.returning) {
-      if (data.rest) { p.returning = false; p.returnTimer = 0; }
+      if (data.rest) { 
+        p.returning = false; 
+        p.returnTimer = 0; 
+      }
       return;
     }
     
@@ -141,6 +152,15 @@ io.on('connection', (socket) => {
     }
     p.dashCooldown = Math.max(0, p.dashCooldown - 1);
     
+    // 空中ブレーキ
+    if (data.down && !p.onGround && p.state === 'normal') {
+      p.vy *= 0.5;
+      p.vx *= 0.5;
+      p.airBrake = true;
+    } else {
+      p.airBrake = false;
+    }
+    
     if (p.state === 'hand_mode' && p.hand.attached) {
       if (data.left) p.hand.moveAngle -= 3;
       if (data.right) p.hand.moveAngle += 3;
@@ -149,10 +169,11 @@ io.on('connection', (socket) => {
         if (mv) mv.heldBy = null;
         p.hand.active = false; p.state = 'normal';
       }
-      if (data.attack && p.x < REST_ZONE.x) {
+      // 帰還中・休憩所以外では攻撃不可
+      if (data.attack && p.x < REST_ZONE.x && !p.returning) {
         const w = getPlayerWeapon(p);
         const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
-        weapons.fireWeapon(p, w, angle, bullets, now);
+        weapons.fireWeapon(p, w, angle, { bullets, players }, now);
       }
       return;
     }
@@ -165,18 +186,33 @@ io.on('connection', (socket) => {
       if (data.right) { p.vx += speed; p.facing = 1; }
     }
     
-    // コヨーテタイム（崖から落下後6フレーム以内ならジャンプ可能）
+    // ブッシュ内移動速度低下
+    const bushMult = p.inBush ? 0.7 : 1;
+    p.vx *= bushMult;
+    
+    // コヨーテタイム
     if ((data.up || data.jump) && (p.onGround || p.coyoteTime > 0)) {
       p.vy = -12; p.onGround = false; p.coyoteTime = 0;
     }
     
-    // S: フックトグル
+    // S: フックトグル（クールタイムあり）
     if (data.hook) {
-      if (p.hook.active) { p.hook.active = false; p.state = 'normal'; }
-      else if (p.state !== 'hand_mode') {
+      if (p.hook.active) { 
+        p.hook.active = false; 
+        p.state = 'normal';
+        // 入力バッファ：フック解除後に攻撃
+        if (p.bufferedAttack) {
+          const w = getPlayerWeapon(p);
+          const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
+          weapons.fireWeapon(p, w, angle, { bullets, players }, now);
+          p.bufferedAttack = false;
+        }
+      }
+      else if (p.state !== 'hand_mode' && p.hookCooldown <= 0) {
         const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
         p.hook.active = true; p.hook.attached = false; p.hook.len = 0;
         p.hook.angle = angle * 180 / Math.PI;
+        p.hookCooldown = C.HOOK_COOLDOWN;
       }
     }
     
@@ -190,11 +226,28 @@ io.on('connection', (socket) => {
       }
     }
     
-    // スペース: 攻撃
-    if (data.attack && p.state === 'normal' && p.x < REST_ZONE.x) {
+    // スペース: 攻撃（チャージ対応）
+    if (data.attack && p.state === 'normal' && p.x < REST_ZONE.x && !p.returning) {
+      const w = getPlayerWeapon(p);
+      if (w.chargeable) {
+        p.charging = true;
+        p.chargeLevel = Math.min(C.CHARGE_MAX, p.chargeLevel + 1);
+      } else {
+        const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
+        weapons.fireWeapon(p, w, angle, { bullets, players }, now);
+      }
+    } else if (!data.attack && p.charging) {
+      // チャージ射撃
       const w = getPlayerWeapon(p);
       const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
-      weapons.fireWeapon(p, w, angle, bullets, now);
+      weapons.fireWeapon(p, w, angle, { bullets, players }, now, p.chargeLevel);
+      p.charging = false;
+      p.chargeLevel = 0;
+    }
+    
+    // フック中の入力バッファ
+    if (data.attack && p.state === 'hooked') {
+      p.bufferedAttack = true;
     }
     
     // Q/E: スロット切り替え
@@ -207,7 +260,7 @@ io.on('connection', (socket) => {
     
     // F: サブウェポン
     if (data.subWeapon && p.subWeapon) {
-      weapons.useSubWeapon(p, p.subWeapon, now);
+      weapons.useSubWeapon(p, p.subWeapon, now, traps, rooms.rooms[p.roomId]?.smokeScreens || []);
     }
     
     // H: 帰還（3秒）
@@ -240,6 +293,7 @@ io.on('connection', (socket) => {
       rooms.leaveRoom(socket.id, rooms.rooms[p.roomId]);
     }
     delete players[socket.id];
+    delete killStreaks[socket.id];
   });
 });
 
@@ -251,6 +305,7 @@ setInterval(() => {
     const p = players[id];
     p.invincible = Math.max(0, p.invincible - 1);
     p.speedBoost = Math.max(0, p.speedBoost - 1);
+    p.hookCooldown = Math.max(0, p.hookCooldown - 1);
     if (p.speedBoost <= 0) p.speedMult = 1;
     
     // 帰還処理
@@ -316,6 +371,57 @@ setInterval(() => {
   physics.updateMovables(MOVABLES, players);
   physics.updateDoors(DOORS);
   physics.updateBullets(bullets, players, maps.BLOCKS);
+  physics.updateTraps(traps, players);
+  physics.updateCollapseBlocks(maps.BLOCKS);
+  
+  // キル処理・スコア・連続キル
+  for (const id in players) {
+    const p = players[id];
+    if (p.hp <= 0 && p.zone === 'battle') {
+      // 最後にダメージを与えたプレイヤーを探す
+      // 簡易実装：弾のownerを追跡する必要があるが、現状では難しいので
+      // 代わりに近くのプレイヤーを探す（簡易版）
+      let killer = null;
+      let minDist = Infinity;
+      for (const otherId in players) {
+        if (otherId === id) continue;
+        const other = players[otherId];
+        if (other.zone !== 'battle') continue;
+        const dx = other.x - p.x;
+        const dy = other.y - p.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < minDist && dist < 500) {
+          minDist = dist;
+          killer = otherId;
+        }
+      }
+      
+      if (killer) {
+        const room = p.roomId ? rooms.rooms[p.roomId] : null;
+        if (room) {
+          rooms.addKillLog(room, killer, id, 'default');
+          room.scores[killer].kills++;
+          room.scores[id].deaths++;
+          
+          // 連続キル
+          killStreaks[killer] = (killStreaks[killer] || 0) + 1;
+          if (killStreaks[killer] >= 2) {
+            io.to(room.id).emit('combo', { player: killer, count: killStreaks[killer] });
+          }
+          killStreaks[id] = 0;
+          
+          shop.onKill(players[killer]);
+        }
+      }
+      
+      // リスポーン
+      p.hp = p.maxHp; p.vx = 0; p.vy = 0;
+      p.hook.active = false; p.hand.active = false; p.state = 'normal';
+      p.invincible = C.SPAWN_INVINCIBLE;
+      const sp = MAPS[0].spawnPoints[Math.floor(Math.random() * MAPS[0].spawnPoints.length)];
+      p.x = sp.x; p.y = sp.y;
+    }
+  }
   
   // ルーム更新
   for (const roomId in rooms.rooms) {
@@ -335,7 +441,9 @@ setInterval(() => {
     warpPads: WARP_PADS, restZone: REST_ZONE,
     shopNpc: SHOP_NPC, maps: MAPS,
     blockSize: BLOCK_SIZE,
-    killLog: globalKillLog.slice(0, 5)
+    killLog: globalKillLog.slice(0, 5),
+    traps: traps.map(t => ({ x: t.x, y: t.y, radius: t.radius, life: t.life })),
+    smokeScreens: rooms.rooms[Object.keys(rooms.rooms)[0]]?.smokeScreens || []
   });
 }, 1000 / 60);
 

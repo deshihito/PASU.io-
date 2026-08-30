@@ -11,7 +11,6 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 
-// ===== 静的ファイル配信 =====
 app.use(express.static(path.join(__dirname, '../docs')));
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../docs/index.html'));
@@ -20,8 +19,8 @@ app.get('/', (req, res) => {
 // ===== ゲーム定数 =====
 const GRAVITY = 0.6;
 const BLOCK_SIZE = 40;
-const GAME_WIDTH = 2000;
-const GAME_HEIGHT = 600;
+const GAME_WIDTH = 3000;
+const GAME_HEIGHT = 800;
 const PLAYER_W = 50;
 const PLAYER_H = 36;
 const HOOK_SPEED = 25;
@@ -31,7 +30,7 @@ const HAND_MAX_LEN = 400;
 const BULLET_SPEED = 15;
 const BULLET_LIFE = 120;
 
-// ===== ブロックマップ（サンドボックス） =====
+// ===== ブロックマップ =====
 // 0=空, 1=壁, 2=氷, 3=ジャンプ台
 const BLOCKS = [];
 const MAP_COLS = Math.ceil(GAME_WIDTH / BLOCK_SIZE);
@@ -44,17 +43,26 @@ function initMap() {
     BLOCKS.push({ c: x, r: MAP_ROWS - 1, type: 1 });
     BLOCKS.push({ c: x, r: MAP_ROWS - 2, type: 1 });
   }
+  // 天井
+  for (let x = 0; x < MAP_COLS; x++) {
+    BLOCKS.push({ c: x, r: 0, type: 1 });
+    BLOCKS.push({ c: x, r: 1, type: 1 });
+  }
   // 壁（左右）
-  for (let y = 0; y < MAP_ROWS; y++) {
+  for (let y = 2; y < MAP_ROWS - 2; y++) {
     BLOCKS.push({ c: 0, r: y, type: 1 });
+    BLOCKS.push({ c: 1, r: y, type: 1 });
     BLOCKS.push({ c: MAP_COLS - 1, r: y, type: 1 });
+    BLOCKS.push({ c: MAP_COLS - 2, r: y, type: 1 });
   }
   // プラットフォーム
   const platforms = [
-    { c: 5, r: 10, w: 6 }, { c: 15, r: 8, w: 4 },
-    { c: 25, r: 11, w: 5 }, { c: 35, r: 7, w: 6 },
-    { c: 12, r: 5, w: 3 }, { c: 30, r: 9, w: 4 },
-    { c: 42, r: 6, w: 5 }, { c: 8, r: 13, w: 4 }
+    { c: 6, r: 14, w: 8 }, { c: 20, r: 12, w: 6 },
+    { c: 35, r: 15, w: 7 }, { c: 50, r: 10, w: 5 },
+    { c: 15, r: 8, w: 4 }, { c: 40, r: 13, w: 5 },
+    { c: 58, r: 9, w: 6 }, { c: 8, r: 18, w: 5 },
+    { c: 28, r: 16, w: 4 }, { c: 45, r: 7, w: 6 },
+    { c: 65, r: 14, w: 5 }, { c: 22, r: 5, w: 4 }
   ];
   for (const p of platforms) {
     for (let i = 0; i < p.w; i++) {
@@ -65,6 +73,25 @@ function initMap() {
 
 initMap();
 
+// ===== レバー =====
+const LEVERS = [
+  { id: 'lever1', x: 400, y: 520, w: 30, h: 40, pulled: false, targetDoor: 'door1' },
+  { id: 'lever2', x: 1200, y: 360, w: 30, h: 40, pulled: false, targetDoor: 'door2' }
+];
+
+// ===== ドア =====
+const DOORS = [
+  { id: 'door1', x: 800, y: 400, w: 40, h: 120, open: false, openHeight: 0 },
+  { id: 'door2', x: 1800, y: 280, w: 40, h: 120, open: false, openHeight: 0 }
+];
+
+// ===== 動かせる物体 =====
+const MOVABLES = [
+  { id: 'box1', x: 300, y: 500, w: 40, h: 40, vx: 0, vy: 0, heldBy: null },
+  { id: 'box2', x: 900, y: 400, w: 50, h: 50, vx: 0, vy: 0, heldBy: null },
+  { id: 'box3', x: 1600, y: 300, w: 35, h: 60, vx: 0, vy: 0, heldBy: null }
+];
+
 // ===== 休憩所 =====
 const REST_AREA = { x: 60, y: 80, w: 120, h: 120 };
 
@@ -73,8 +100,8 @@ const WARP_POINTS = [{ x: 140, y: 360, w: 40, h: 40 }];
 
 // ===== マップデータ =====
 const MAPS = [
-  { name: 'Battlefield', spawnPoints: [{x: 200, y: 300}, {x: 800, y: 300}, {x: 1400, y: 300}] },
-  { name: 'Sky Arena', spawnPoints: [{x: 300, y: 200}, {x: 1000, y: 150}, {x: 1600, y: 200}] }
+  { name: 'Battlefield', spawnPoints: [{x: 200, y: 500}, {x: 1000, y: 400}, {x: 2000, y: 500}] },
+  { name: 'Sky Arena', spawnPoints: [{x: 300, y: 300}, {x: 1500, y: 200}, {x: 2500, y: 300}] }
 ];
 
 const players = {};
@@ -83,13 +110,13 @@ const bullets = [];
 function createPlayer(id) {
   return {
     id,
-    x: 300, y: 300,
+    x: 300, y: 500,
     vx: 0, vy: 0,
     width: PLAYER_W, height: PLAYER_H,
     angle: 0,
     state: 'normal',
     hook: { active: false, x: 0, y: 0, attached: false, len: 0, angle: 0 },
-    hand: { active: false, x: 0, y: 0, attached: false, angle: 0, len: 0, moveAngle: 0 },
+    hand: { active: false, x: 0, y: 0, attached: false, angle: 0, len: 0, moveAngle: 0, targetType: null, targetId: null },
     zone: 'battle',
     hp: 100, maxHp: 100,
     coins: 0,
@@ -153,13 +180,11 @@ function resolveBlockCollision(p) {
       
       const bx = b.c * BLOCK_SIZE;
       const by = b.r * BLOCK_SIZE;
-      const bw = BLOCK_SIZE;
-      const bh = BLOCK_SIZE;
       
       const overlapLeft = (p.x + p.width) - bx;
-      const overlapRight = (bx + bw) - p.x;
+      const overlapRight = (bx + BLOCK_SIZE) - p.x;
       const overlapTop = (p.y + p.height) - by;
-      const overlapBottom = (by + bh) - p.y;
+      const overlapBottom = (by + BLOCK_SIZE) - p.y;
       
       const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
       
@@ -168,13 +193,13 @@ function resolveBlockCollision(p) {
         p.vy = 0;
         p.onGround = true;
       } else if (minOverlap === overlapBottom && p.vy < 0) {
-        p.y = by + bh;
+        p.y = by + BLOCK_SIZE;
         p.vy = 0;
       } else if (minOverlap === overlapLeft && p.vx > 0) {
         p.x = bx - p.width;
         p.vx = 0;
       } else if (minOverlap === overlapRight && p.vx < 0) {
-        p.x = bx + bw;
+        p.x = bx + BLOCK_SIZE;
         p.vx = 0;
       }
     }
@@ -233,25 +258,155 @@ function updateHand(p) {
     
     if (p.hand.len > HAND_MAX_LEN) { p.hand.active = false; p.state = 'normal'; return; }
     
+    // レバーに当たったか
+    for (const lever of LEVERS) {
+      if (lever.pulled) continue;
+      if (p.hand.x >= lever.x && p.hand.x <= lever.x + lever.w &&
+          p.hand.y >= lever.y && p.hand.y <= lever.y + lever.h) {
+        p.hand.attached = true;
+        p.hand.x = lever.x + lever.w/2;
+        p.hand.y = lever.y + lever.h/2;
+        p.hand.targetType = 'lever';
+        p.hand.targetId = lever.id;
+        p.state = 'hand_mode';
+        return;
+      }
+    }
+    
+    // 動かせる物体に当たったか
+    for (const mv of MOVABLES) {
+      if (mv.heldBy && mv.heldBy !== p.id) continue;
+      if (p.hand.x >= mv.x && p.hand.x <= mv.x + mv.w &&
+          p.hand.y >= mv.y && p.hand.y <= mv.y + mv.h) {
+        p.hand.attached = true;
+        p.hand.x = mv.x + mv.w/2;
+        p.hand.y = mv.y + mv.h/2;
+        p.hand.targetType = 'movable';
+        p.hand.targetId = mv.id;
+        mv.heldBy = p.id;
+        p.state = 'hand_mode';
+        return;
+      }
+    }
+    
+    // 壁に当たったか
     const hit = lineBlockIntersect(sx, sy, p.hand.x, p.hand.y);
     if (hit) {
       p.hand.attached = true;
       p.hand.x = hit.x;
       p.hand.y = hit.y;
-      p.hand.moveAngle = p.hand.angle;
+      p.hand.targetType = 'wall';
+      p.hand.targetId = null;
       p.state = 'hand_mode';
+      return;
     }
     
     if (p.hand.x < 0 || p.hand.x > GAME_WIDTH || p.hand.y < 0 || p.hand.y > GAME_HEIGHT) {
       p.hand.active = false; p.state = 'normal';
     }
   } else {
-    // ハンドに張り付き、A/Dで角度変更
-    const rad = p.hand.moveAngle * Math.PI / 180;
-    p.vx += Math.cos(rad) * 0.8;
-    p.vy += Math.sin(rad) * 0.8;
-    p.vy *= 0.95;
-    p.vx *= 0.95;
+    // 掴んでいる状態
+    if (p.hand.targetType === 'lever') {
+      // レバーを引く（A/Dで角度変更＝引く方向）
+      const lever = LEVERS.find(l => l.id === p.hand.targetId);
+      if (lever) {
+        const dx = lever.x + lever.w/2 - sx;
+        const dy = lever.y + lever.h/2 - sy;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        
+        // プレイヤーが動くとレバーも引かれる
+        if (dist > 60) {
+          // 十分引いたらレバーON
+          if (!lever.pulled) {
+            lever.pulled = true;
+            const door = DOORS.find(d => d.id === lever.targetDoor);
+            if (door) door.open = true;
+          }
+          p.hand.active = false;
+          p.state = 'normal';
+        } else {
+          // 引っ張られている感じ
+          p.vx += dx * 0.01;
+          p.vy += dy * 0.01;
+        }
+      }
+    } else if (p.hand.targetType === 'movable') {
+      // 物体を掴んで運ぶ
+      const mv = MOVABLES.find(m => m.id === p.hand.targetId);
+      if (mv) {
+        const targetX = sx + Math.cos(p.hand.moveAngle * Math.PI / 180) * 50;
+        const targetY = sy + Math.sin(p.hand.moveAngle * Math.PI / 180) * 50;
+        mv.x += (targetX - mv.x - mv.w/2) * 0.15;
+        mv.y += (targetY - mv.y - mv.h/2) * 0.15;
+        mv.vx = p.vx * 0.5;
+        mv.vy = p.vy * 0.5;
+        p.hand.x = mv.x + mv.w/2;
+        p.hand.y = mv.y + mv.h/2;
+        
+        // A/Dでハンドの角度変更＝物体の運び方向
+        if (p.hand.moveAngle !== undefined) {
+          const rad = p.hand.moveAngle * Math.PI / 180;
+          mv.vx += Math.cos(rad) * 0.3;
+          mv.vy += Math.sin(rad) * 0.3;
+        }
+      }
+    } else if (p.hand.targetType === 'wall') {
+      // 壁に張り付き（引っ張り効果なし）
+      const dx = p.hand.x - sx;
+      const dy = p.hand.y - sy;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 10) {
+        p.hand.active = false;
+        p.state = 'normal';
+      }
+    }
+  }
+}
+
+function updateMovables() {
+  for (const mv of MOVABLES) {
+    if (mv.heldBy) {
+      const holder = players[mv.heldBy];
+      if (!holder || !holder.hand.active || holder.hand.targetId !== mv.id) {
+        mv.heldBy = null;
+      }
+    }
+    
+    if (!mv.heldBy) {
+      mv.vy += GRAVITY;
+      mv.x += mv.vx;
+      mv.y += mv.vy;
+      
+      // 床判定
+      const c1 = Math.floor(mv.x / BLOCK_SIZE);
+      const c2 = Math.floor((mv.x + mv.w) / BLOCK_SIZE);
+      const r1 = Math.floor(mv.y / BLOCK_SIZE);
+      const r2 = Math.floor((mv.y + mv.h) / BLOCK_SIZE);
+      
+      for (let c = c1; c <= c2; c++) {
+        for (let r = r1; r <= r2; r++) {
+          const b = blockAt(c, r);
+          if (b && b.type === 1) {
+            const by = b.r * BLOCK_SIZE;
+            if (mv.vy > 0 && mv.y + mv.h > by && mv.y + mv.h - mv.vy <= by) {
+              mv.y = by - mv.h;
+              mv.vy = 0;
+            }
+          }
+        }
+      }
+      
+      mv.vx *= 0.9;
+      if (Math.abs(mv.vx) < 0.1) mv.vx = 0;
+    }
+  }
+}
+
+function updateDoors() {
+  for (const d of DOORS) {
+    if (d.open && d.openHeight < d.h) {
+      d.openHeight += 2;
+    }
   }
 }
 
@@ -319,6 +474,8 @@ function updatePhysics() {
     updateHook(p);
     updateHand(p);
   }
+  updateMovables();
+  updateDoors();
   updateBullets();
 }
 
@@ -342,6 +499,7 @@ setInterval(() => {
   
   io.emit('state', {
     players, blocks: BLOCKS, bullets,
+    levers: LEVERS, doors: DOORS, movables: MOVABLES,
     warpPoints: WARP_POINTS, restArea: REST_AREA,
     maps: MAPS, blockSize: BLOCK_SIZE
   });
@@ -355,7 +513,6 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p) return;
     
-    // マウス位置更新
     if (data.mouseX !== undefined) p.mouseX = data.mouseX;
     if (data.mouseY !== undefined) p.mouseY = data.mouseY;
     
@@ -370,15 +527,17 @@ io.on('connection', (socket) => {
     }
     
     if (p.state === 'hand_mode' && p.hand.attached) {
-      // A/Dでハンドの進行方向を変更
-      if (data.left) p.hand.moveAngle -= 2.5;
-      if (data.right) p.hand.moveAngle += 2.5;
+      if (data.left) p.hand.moveAngle -= 3;
+      if (data.right) p.hand.moveAngle += 3;
+      
       // Wでハンドモード解除
       if (data.pasta) {
+        const mv = MOVABLES.find(m => m.id === p.hand.targetId);
+        if (mv) mv.heldBy = null;
         p.hand.active = false;
         p.state = 'normal';
       }
-      // スペースで攻撃
+      
       if (data.attack) {
         const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
         bullets.push({
@@ -402,13 +561,18 @@ io.on('connection', (socket) => {
       if (data.right) { p.vx += speed; p.facing = 1; }
     }
     
-    // S: パスタフック（マウス方向）
-    if (data.hook && !p.hook.active && p.state !== 'hand_mode') {
-      const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
-      p.hook.active = true;
-      p.hook.attached = false;
-      p.hook.len = 0;
-      p.hook.angle = angle * 180 / Math.PI;
+    // S: パスタフック（マウス方向）- 再度押すと取り消し
+    if (data.hook) {
+      if (p.hook.active) {
+        p.hook.active = false;
+        p.state = 'normal';
+      } else if (p.state !== 'hand_mode') {
+        const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
+        p.hook.active = true;
+        p.hook.attached = false;
+        p.hook.len = 0;
+        p.hook.angle = angle * 180 / Math.PI;
+      }
     }
     
     // W: パスタハンド（マウス方向）
@@ -421,10 +585,11 @@ io.on('connection', (socket) => {
         p.hand.attached = false;
         p.hand.len = 0;
         p.hand.angle = angle * 180 / Math.PI;
+        p.hand.targetType = null;
+        p.hand.targetId = null;
       }
     }
     
-    // スペース: 通常攻撃（パスタ弾）
     if (data.attack && p.state === 'normal') {
       const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
       bullets.push({

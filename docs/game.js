@@ -9,7 +9,10 @@ const mapSelectEl = document.getElementById('mapSelect');
 const mapListEl = document.getElementById('mapList');
 
 // 仮サーバURL
-const SERVER_URL = 'https://pasu-io.onrender.com';
+const SERVER_URL = window.location.hostname === 'deshihito.github.io' 
+  ? 'https://pasu-io.onrender.com' 
+  : window.location.origin;
+
 const socket = io(SERVER_URL);
 
 let players = {};

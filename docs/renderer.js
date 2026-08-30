@@ -1,5 +1,7 @@
 // ===== PASU.io 描画エンジン =====
 
+const C = CONSTANTS;
+
 const Renderer = {
   ctx: null,
   canvas: null,

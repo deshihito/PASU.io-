@@ -11,6 +11,9 @@ function resizeCanvas() {
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
+// 定数の短縮参照
+const C = CONSTANTS;
+
 // グローバルカメラ（他モジュールから参照用）
 window.cameraX = 0;
 window.cameraY = 0;
@@ -20,7 +23,6 @@ Input.init(canvas);
 Renderer.init(canvas);
 UI.init();
 Audio.init();
-
 
 const SERVER_URL = window.location.hostname === 'deshihito.github.io' 
   ? 'https://pasu-io.onrender.com' 
@@ -202,6 +204,7 @@ window.addEventListener('keydown', (e) => {
 socket.on('connect', () => {
   myId = socket.id;
   UI.showStatus('接続完了', '#34c759');
+  socket.emit('joinRoom', { roomId: 'default', mode: 'deathmatch' });
   UI.showHUD();
   Audio.resume();
   Audio.playBGM();

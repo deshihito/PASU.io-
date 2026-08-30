@@ -157,6 +157,26 @@ const Audio = {
     this.playTone(440, 0.4, 'sine', 0.12);
   },
   
+  charge(level) {
+    const freq = 400 + level * 10;
+    this.playTone(freq, 0.05, 'sine', 0.03);
+  },
+  
+  missile() {
+    this.playNoise(0.2, 0.1);
+    this.playTone(200, 0.3, 'sawtooth', 0.08);
+  },
+  
+  trap() {
+    this.playTone(150, 0.1, 'square', 0.08);
+    this.playNoise(0.1, 0.05);
+  },
+  
+  shield() {
+    this.playTone(600, 0.2, 'sine', 0.08);
+    this.playTone(800, 0.3, 'triangle', 0.06);
+  },
+  
   // ===== BGM（簡易ループ） =====
   
   bgmOscillators: [],

@@ -10,137 +10,208 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
-// ===== 静的ファイル配信（docsフォルダ） =====
-app.use(express.static(path.join(__dirname, '../docs')));
 
-// ルートアクセス時にゲーム画面を返す
+// ===== 静的ファイル配信 =====
+app.use(express.static(path.join(__dirname, '../docs')));
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../docs/index.html'));
 });
 
-
 // ===== ゲーム定数 =====
-const GRAVITY = 0.5;
-const GROUND_Y = 340;
-const GAME_WIDTH = 1600;
-const GAME_HEIGHT = 400;
-const PLAYER_SIZE = 40;
-const HOOK_SPEED = 20;
-const HOOK_MAX_LENGTH = 400;
+const GRAVITY = 0.6;
+const BLOCK_SIZE = 40;
+const GAME_WIDTH = 2000;
+const GAME_HEIGHT = 600;
+const PLAYER_W = 50;
+const PLAYER_H = 36;
+const HOOK_SPEED = 25;
+const HOOK_MAX_LEN = 500;
+const HAND_SPEED = 20;
+const HAND_MAX_LEN = 400;
+const BULLET_SPEED = 15;
+const BULLET_LIFE = 120;
+
+// ===== ブロックマップ（サンドボックス） =====
+// 0=空, 1=壁, 2=氷, 3=ジャンプ台
+const BLOCKS = [];
+const MAP_COLS = Math.ceil(GAME_WIDTH / BLOCK_SIZE);
+const MAP_ROWS = Math.ceil(GAME_HEIGHT / BLOCK_SIZE);
+
+function initMap() {
+  BLOCKS.length = 0;
+  // 床
+  for (let x = 0; x < MAP_COLS; x++) {
+    BLOCKS.push({ c: x, r: MAP_ROWS - 1, type: 1 });
+    BLOCKS.push({ c: x, r: MAP_ROWS - 2, type: 1 });
+  }
+  // 壁（左右）
+  for (let y = 0; y < MAP_ROWS; y++) {
+    BLOCKS.push({ c: 0, r: y, type: 1 });
+    BLOCKS.push({ c: MAP_COLS - 1, r: y, type: 1 });
+  }
+  // プラットフォーム
+  const platforms = [
+    { c: 5, r: 10, w: 6 }, { c: 15, r: 8, w: 4 },
+    { c: 25, r: 11, w: 5 }, { c: 35, r: 7, w: 6 },
+    { c: 12, r: 5, w: 3 }, { c: 30, r: 9, w: 4 },
+    { c: 42, r: 6, w: 5 }, { c: 8, r: 13, w: 4 }
+  ];
+  for (const p of platforms) {
+    for (let i = 0; i < p.w; i++) {
+      BLOCKS.push({ c: p.c + i, r: p.r, type: 1 });
+    }
+  }
+}
+
+initMap();
+
+// ===== 休憩所 =====
+const REST_AREA = { x: 60, y: 80, w: 120, h: 120 };
+
+// ===== ワープポイント =====
+const WARP_POINTS = [{ x: 140, y: 360, w: 40, h: 40 }];
 
 // ===== マップデータ =====
 const MAPS = [
-  { name: 'Battlefield', spawnPoints: [{x: 100, y: 200}, {x: 700, y: 200}, {x: 400, y: 100}] },
-  { name: 'High Ground', spawnPoints: [{x: 50, y: 300}, {x: 750, y: 300}, {x: 400, y: 50}] }
-];
-
-// ===== 壁 =====
-const WALLS = [
-  { x: 200, y: 250, w: 20, h: 100 },
-  { x: 500, y: 200, w: 20, h: 150 },
-  { x: 800, y: 280, w: 100, h: 20 },
-  { x: 1100, y: 220, w: 20, h: 130 },
-  { x: 1400, y: 260, w: 20, h: 90 }
-];
-
-// ===== 休憩所 =====
-const REST_AREA = { x: 50, y: 100, w: 100, h: 100 };
-
-// ===== ワープポイント（休憩所→戦場） =====
-const WARP_POINTS = [
-  { x: 120, y: 300, w: 40, h: 40 }
+  { name: 'Battlefield', spawnPoints: [{x: 200, y: 300}, {x: 800, y: 300}, {x: 1400, y: 300}] },
+  { name: 'Sky Arena', spawnPoints: [{x: 300, y: 200}, {x: 1000, y: 150}, {x: 1600, y: 200}] }
 ];
 
 const players = {};
+const bullets = [];
 
 function createPlayer(id) {
   return {
     id,
-    x: 100 + Math.random() * 200,
-    y: 200,
-    vx: 0,
-    vy: 0,
-    width: PLAYER_SIZE,
-    height: PLAYER_SIZE,
+    x: 300, y: 300,
+    vx: 0, vy: 0,
+    width: PLAYER_W, height: PLAYER_H,
     angle: 0,
     state: 'normal',
-    hook: {
-      active: false,
-      x: 0, y: 0,
-      attached: false,
-      length: 0,
-      angle: 0
-    },
-    pastaHook: {
-      active: false,
-      x: 0, y: 0,
-      attached: false,
-      angle: 0,
-      length: 0
-    },
+    hook: { active: false, x: 0, y: 0, attached: false, len: 0, angle: 0 },
+    hand: { active: false, x: 0, y: 0, attached: false, angle: 0, len: 0, moveAngle: 0 },
     zone: 'battle',
-    hp: 100,
-    maxHp: 100,
+    hp: 100, maxHp: 100,
     coins: 0,
-    color: `hsl(${Math.random() * 360}, 70%, 50%)`,
-    facing: 1
+    color: `hsl(${Math.random() * 360}, 70%, 55%)`,
+    facing: 1,
+    mouseX: 0, mouseY: 0,
+    onGround: false,
+    invincible: 0
   };
 }
 
-function rectIntersect(r1, r2) {
-  return !(r2.x > r1.x + r1.w || 
-           r2.x + r2.w < r1.x || 
-           r2.y > r1.y + r1.h ||
-           r2.y + r2.h < r1.y);
+function blockAt(cx, cy) {
+  for (const b of BLOCKS) {
+    if (b.c === cx && b.r === cy) return b;
+  }
+  return null;
 }
 
-function lineRectIntersect(x1, y1, x2, y2, rx, ry, rw, rh) {
-  const minX = Math.min(x1, x2);
-  const maxX = Math.max(x1, x2);
-  const minY = Math.min(y1, y2);
-  const maxY = Math.max(y1, y2);
-  
-  if (maxX < rx || minX > rx + rw || maxY < ry || minY > ry + rh) {
-    return false;
+function lineBlockIntersect(x1, y1, x2, y2) {
+  const steps = Math.ceil(Math.max(Math.abs(x2-x1), Math.abs(y2-y1)) / (BLOCK_SIZE/2));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const px = x1 + (x2 - x1) * t;
+    const py = y1 + (y2 - y1) * t;
+    const cx = Math.floor(px / BLOCK_SIZE);
+    const cy = Math.floor(py / BLOCK_SIZE);
+    const b = blockAt(cx, cy);
+    if (b && b.type === 1) {
+      return { x: px, y: py, block: b };
+    }
   }
-  return true;
+  return null;
+}
+
+function rectBlocksIntersect(rx, ry, rw, rh) {
+  const c1 = Math.floor(rx / BLOCK_SIZE);
+  const c2 = Math.floor((rx + rw) / BLOCK_SIZE);
+  const r1 = Math.floor(ry / BLOCK_SIZE);
+  const r2 = Math.floor((ry + rh) / BLOCK_SIZE);
+  for (let c = c1; c <= c2; c++) {
+    for (let r = r1; r <= r2; r++) {
+      const b = blockAt(c, r);
+      if (b && b.type === 1) return true;
+    }
+  }
+  return false;
+}
+
+function resolveBlockCollision(p) {
+  const c1 = Math.floor(p.x / BLOCK_SIZE);
+  const c2 = Math.floor((p.x + p.width) / BLOCK_SIZE);
+  const r1 = Math.floor(p.y / BLOCK_SIZE);
+  const r2 = Math.floor((p.y + p.height) / BLOCK_SIZE);
+  
+  p.onGround = false;
+  
+  for (let c = c1; c <= c2; c++) {
+    for (let r = r1; r <= r2; r++) {
+      const b = blockAt(c, r);
+      if (!b || b.type !== 1) continue;
+      
+      const bx = b.c * BLOCK_SIZE;
+      const by = b.r * BLOCK_SIZE;
+      const bw = BLOCK_SIZE;
+      const bh = BLOCK_SIZE;
+      
+      const overlapLeft = (p.x + p.width) - bx;
+      const overlapRight = (bx + bw) - p.x;
+      const overlapTop = (p.y + p.height) - by;
+      const overlapBottom = (by + bh) - p.y;
+      
+      const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
+      
+      if (minOverlap === overlapTop && p.vy >= 0) {
+        p.y = by - p.height;
+        p.vy = 0;
+        p.onGround = true;
+      } else if (minOverlap === overlapBottom && p.vy < 0) {
+        p.y = by + bh;
+        p.vy = 0;
+      } else if (minOverlap === overlapLeft && p.vx > 0) {
+        p.x = bx - p.width;
+        p.vx = 0;
+      } else if (minOverlap === overlapRight && p.vx < 0) {
+        p.x = bx + bw;
+        p.vx = 0;
+      }
+    }
+  }
 }
 
 function updateHook(p) {
   if (!p.hook.active) return;
-  
-  const startX = p.x + p.width/2;
-  const startY = p.y + p.height/2;
+  const sx = p.x + p.width/2;
+  const sy = p.y + p.height/2;
   
   if (!p.hook.attached) {
-    p.hook.length += HOOK_SPEED;
+    p.hook.len += HOOK_SPEED;
     const rad = p.hook.angle * Math.PI / 180;
-    p.hook.x = startX + Math.cos(rad) * p.hook.length;
-    p.hook.y = startY + Math.sin(rad) * p.hook.length;
+    p.hook.x = sx + Math.cos(rad) * p.hook.len;
+    p.hook.y = sy + Math.sin(rad) * p.hook.len;
     
-    if (p.hook.length > HOOK_MAX_LENGTH) {
-      p.hook.active = false;
-      return;
-    }
+    if (p.hook.len > HOOK_MAX_LEN) { p.hook.active = false; return; }
     
-    for (const wall of WALLS) {
-      if (lineRectIntersect(startX, startY, p.hook.x, p.hook.y, wall.x, wall.y, wall.w, wall.h)) {
-        p.hook.attached = true;
-        break;
-      }
+    const hit = lineBlockIntersect(sx, sy, p.hook.x, p.hook.y);
+    if (hit) {
+      p.hook.attached = true;
+      p.hook.x = hit.x;
+      p.hook.y = hit.y;
     }
     
     if (p.hook.x < 0 || p.hook.x > GAME_WIDTH || p.hook.y < 0 || p.hook.y > GAME_HEIGHT) {
       p.hook.active = false;
     }
   } else {
-    const dx = p.hook.x - (p.x + p.width/2);
-    const dy = p.hook.y - (p.y + p.height/2);
+    const dx = p.hook.x - sx;
+    const dy = p.hook.y - sy;
     const dist = Math.sqrt(dx*dx + dy*dy);
-    
-    if (dist > 10) {
-      p.vx += dx * 0.015;
-      p.vy += dy * 0.015;
+    if (dist > 15) {
+      const pull = 0.025;
+      p.vx += dx * pull;
+      p.vy += dy * pull;
       p.state = 'hooked';
     } else {
       p.hook.active = false;
@@ -149,37 +220,67 @@ function updateHook(p) {
   }
 }
 
-function updatePastaHook(p) {
-  if (!p.pastaHook.active) return;
+function updateHand(p) {
+  if (!p.hand.active) return;
+  const sx = p.x + p.width/2;
+  const sy = p.y + p.height/2;
   
-  const startX = p.x + p.width/2;
-  const startY = p.y + p.height/2;
-  
-  if (!p.pastaHook.attached) {
-    p.pastaHook.length += HOOK_SPEED;
-    const rad = p.pastaHook.angle * Math.PI / 180;
-    p.pastaHook.x = startX + Math.cos(rad) * p.pastaHook.length;
-    p.pastaHook.y = startY + Math.sin(rad) * p.pastaHook.length;
+  if (!p.hand.attached) {
+    p.hand.len += HAND_SPEED;
+    const rad = p.hand.angle * Math.PI / 180;
+    p.hand.x = sx + Math.cos(rad) * p.hand.len;
+    p.hand.y = sy + Math.sin(rad) * p.hand.len;
     
-    if (p.pastaHook.length > HOOK_MAX_LENGTH) {
-      p.pastaHook.active = false;
-      return;
+    if (p.hand.len > HAND_MAX_LEN) { p.hand.active = false; p.state = 'normal'; return; }
+    
+    const hit = lineBlockIntersect(sx, sy, p.hand.x, p.hand.y);
+    if (hit) {
+      p.hand.attached = true;
+      p.hand.x = hit.x;
+      p.hand.y = hit.y;
+      p.hand.moveAngle = p.hand.angle;
+      p.state = 'hand_mode';
     }
     
-    for (const wall of WALLS) {
-      if (lineRectIntersect(startX, startY, p.pastaHook.x, p.pastaHook.y, wall.x, wall.y, wall.w, wall.h)) {
-        p.pastaHook.attached = true;
+    if (p.hand.x < 0 || p.hand.x > GAME_WIDTH || p.hand.y < 0 || p.hand.y > GAME_HEIGHT) {
+      p.hand.active = false; p.state = 'normal';
+    }
+  } else {
+    // ハンドに張り付き、A/Dで角度変更
+    const rad = p.hand.moveAngle * Math.PI / 180;
+    p.vx += Math.cos(rad) * 0.8;
+    p.vy += Math.sin(rad) * 0.8;
+    p.vy *= 0.95;
+    p.vx *= 0.95;
+  }
+}
+
+function updateBullets() {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += b.vx;
+    b.y += b.vy;
+    b.life--;
+    
+    const hit = lineBlockIntersect(b.x - b.vx, b.y - b.vy, b.x, b.y);
+    if (hit) { bullets.splice(i, 1); continue; }
+    
+    for (const id in players) {
+      const p = players[id];
+      if (p.id === b.owner || p.zone !== 'battle') continue;
+      const dx = (p.x + p.width/2) - b.x;
+      const dy = (p.y + p.height/2) - b.y;
+      if (Math.sqrt(dx*dx + dy*dy) < 30) {
+        p.hp -= 15;
+        p.vx += b.vx * 0.3;
+        p.vy += b.vy * 0.3;
+        bullets.splice(i, 1);
         break;
       }
     }
-  } else {
-    const dx = p.pastaHook.x - (p.x + p.width/2);
-    const dy = p.pastaHook.y - (p.y + p.height/2);
-    const dist = Math.sqrt(dx*dx + dy*dy);
     
-    if (dist > 5) {
-      p.vx += dx * 0.08;
-      p.vy += dy * 0.08;
+    if (b.life <= 0 || b.x < 0 || b.x > GAME_WIDTH || b.y < 0 || b.y > GAME_HEIGHT) {
+      bullets.splice(i, 1);
     }
   }
 }
@@ -187,81 +288,63 @@ function updatePastaHook(p) {
 function updatePhysics() {
   for (const id in players) {
     const p = players[id];
+    p.invincible = Math.max(0, p.invincible - 1);
     
     if (p.zone === 'rest') {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vx *= 0.9;
-      p.vy *= 0.9;
+      p.x += p.vx; p.y += p.vy;
+      p.vx *= 0.9; p.vy *= 0.9;
       p.x = Math.max(0, Math.min(200, p.x));
       p.y = Math.max(0, Math.min(400, p.y));
       continue;
     }
     
-    if (p.state !== 'pasta_mode') {
+    if (p.state !== 'hand_mode') {
       p.vy += GRAVITY;
     }
     
     p.x += p.vx;
     p.y += p.vy;
     
-    if (p.y + p.height > GROUND_Y) {
-      p.y = GROUND_Y - p.height;
-      p.vy = 0;
-    }
-    
-    for (const wall of WALLS) {
-      if (rectIntersect(
-        {x: p.x, y: p.y, w: p.width, h: p.height},
-        wall
-      )) {
-        const centerPx = p.x + p.width/2;
-        const centerWx = wall.x + wall.w/2;
-        if (centerPx < centerWx) {
-          p.x = wall.x - p.width;
-        } else {
-          p.x = wall.x + wall.w;
-        }
-        p.vx = 0;
-      }
-    }
+    resolveBlockCollision(p);
     
     if (p.x < 0) { p.x = 0; p.vx = 0; }
     if (p.x > GAME_WIDTH - p.width) { p.x = GAME_WIDTH - p.width; p.vx = 0; }
     
-    p.vx *= 0.85;
-    if (Math.abs(p.vx) < 0.1) p.vx = 0;
+    if (!p.onGround && p.state !== 'hooked' && p.state !== 'hand_mode') {
+      p.vx *= 0.98;
+    } else if (p.state === 'normal') {
+      p.vx *= 0.85;
+    }
     
     updateHook(p);
-    updatePastaHook(p);
+    updateHand(p);
   }
+  updateBullets();
 }
 
-function checkPlayerDeath(p) {
-  if (p.y > GAME_HEIGHT + 100 || p.hp <= 0) {
+function checkDeath(p) {
+  if (p.y > GAME_HEIGHT + 200 || p.hp <= 0) {
     p.hp = p.maxHp;
-    p.vx = 0;
-    p.vy = 0;
+    p.vx = 0; p.vy = 0;
     p.hook.active = false;
-    p.pastaHook.active = false;
+    p.hand.active = false;
     p.state = 'normal';
-    
     if (p.zone === 'battle') {
-      const spawn = MAPS[0].spawnPoints[Math.floor(Math.random() * MAPS[0].spawnPoints.length)];
-      p.x = spawn.x;
-      p.y = spawn.y;
+      const sp = MAPS[0].spawnPoints[Math.floor(Math.random() * MAPS[0].spawnPoints.length)];
+      p.x = sp.x; p.y = sp.y;
     }
   }
 }
 
 setInterval(() => {
   updatePhysics();
+  for (const id in players) checkDeath(players[id]);
   
-  for (const id in players) {
-    checkPlayerDeath(players[id]);
-  }
-  
-  io.emit('state', { players, walls: WALLS, warpPoints: WARP_POINTS, restArea: REST_AREA, maps: MAPS });
+  io.emit('state', {
+    players, blocks: BLOCKS, bullets,
+    warpPoints: WARP_POINTS, restArea: REST_AREA,
+    maps: MAPS, blockSize: BLOCK_SIZE
+  });
 }, 1000 / 60);
 
 io.on('connection', (socket) => {
@@ -272,7 +355,11 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p) return;
     
-    const speed = 1.2;
+    // マウス位置更新
+    if (data.mouseX !== undefined) p.mouseX = data.mouseX;
+    if (data.mouseY !== undefined) p.mouseY = data.mouseY;
+    
+    const speed = 1.0;
     
     if (p.zone === 'rest') {
       if (data.left) p.vx -= speed;
@@ -282,53 +369,82 @@ io.on('connection', (socket) => {
       return;
     }
     
-    if (p.state === 'pasta_mode') {
-      if (data.left) p.pastaHook.angle -= 3;
-      if (data.right) p.pastaHook.angle += 3;
-      p.vy *= 0.95;
-      p.vx *= 0.9;
-    } else if (p.state === 'hooked') {
+    if (p.state === 'hand_mode' && p.hand.attached) {
+      // A/Dでハンドの進行方向を変更
+      if (data.left) p.hand.moveAngle -= 2.5;
+      if (data.right) p.hand.moveAngle += 2.5;
+      // Wでハンドモード解除
+      if (data.pasta) {
+        p.hand.active = false;
+        p.state = 'normal';
+      }
+      // スペースで攻撃
+      if (data.attack) {
+        const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
+        bullets.push({
+          x: p.x + p.width/2,
+          y: p.y + p.height/2,
+          vx: Math.cos(angle) * BULLET_SPEED,
+          vy: Math.sin(angle) * BULLET_SPEED,
+          owner: p.id,
+          life: BULLET_LIFE,
+          color: p.color
+        });
+      }
+      return;
+    }
+    
+    if (p.state === 'hooked') {
       if (data.left) p.vx -= speed * 0.3;
       if (data.right) p.vx += speed * 0.3;
-    } else {
-      if (data.left) {
-        p.vx -= speed;
-        p.facing = -1;
-      }
-      if (data.right) {
-        p.vx += speed;
-        p.facing = 1;
-      }
+    } else if (p.state === 'normal') {
+      if (data.left) { p.vx -= speed; p.facing = -1; }
+      if (data.right) { p.vx += speed; p.facing = 1; }
     }
     
-    if (data.hook && !p.hook.active && p.state !== 'pasta_mode') {
+    // S: パスタフック（マウス方向）
+    if (data.hook && !p.hook.active && p.state !== 'hand_mode') {
+      const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
       p.hook.active = true;
       p.hook.attached = false;
-      p.hook.length = 0;
-      p.hook.angle = p.facing === 1 ? -45 : -135;
+      p.hook.len = 0;
+      p.hook.angle = angle * 180 / Math.PI;
     }
     
-    if (data.pasta) {
-      if (p.state === 'pasta_mode') {
-        p.state = 'normal';
-        p.pastaHook.active = false;
-      } else if (!p.pastaHook.active) {
-        p.state = 'pasta_mode';
-        p.pastaHook.active = true;
-        p.pastaHook.attached = false;
-        p.pastaHook.length = 0;
-        p.pastaHook.angle = p.facing === 1 ? -45 : -135;
+    // W: パスタハンド（マウス方向）
+    if (data.pasta && p.state !== 'hand_mode') {
+      if (p.hand.active && !p.hand.attached) {
+        p.hand.active = false;
+      } else if (!p.hand.active) {
+        const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
+        p.hand.active = true;
+        p.hand.attached = false;
+        p.hand.len = 0;
+        p.hand.angle = angle * 180 / Math.PI;
       }
+    }
+    
+    // スペース: 通常攻撃（パスタ弾）
+    if (data.attack && p.state === 'normal') {
+      const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
+      bullets.push({
+        x: p.x + p.width/2,
+        y: p.y + p.height/2,
+        vx: Math.cos(angle) * BULLET_SPEED,
+        vy: Math.sin(angle) * BULLET_SPEED,
+        owner: p.id,
+        life: BULLET_LIFE,
+        color: p.color
+      });
     }
     
     if (data.rest) {
       p.zone = 'rest';
       p.x = REST_AREA.x + REST_AREA.w/2;
       p.y = REST_AREA.y + REST_AREA.h/2;
-      p.vx = 0;
-      p.vy = 0;
+      p.vx = 0; p.vy = 0;
       p.hook.active = false;
-      p.pastaHook.active = false;
+      p.hand.active = false;
       p.state = 'normal';
     }
   });
@@ -337,11 +453,9 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p) return;
     p.zone = 'battle';
-    const spawn = MAPS[mapIndex].spawnPoints[spawnIndex];
-    p.x = spawn.x;
-    p.y = spawn.y;
-    p.vx = 0;
-    p.vy = 0;
+    const sp = MAPS[mapIndex].spawnPoints[spawnIndex];
+    p.x = sp.x; p.y = sp.y;
+    p.vx = 0; p.vy = 0;
   });
   
   socket.on('disconnect', () => {

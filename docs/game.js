@@ -17,6 +17,9 @@ const socket = io(SERVER_URL);
 let players = {};
 let blocks = [];
 let bullets = [];
+let levers = [];
+let doors = [];
+let movables = [];
 let myId = null;
 let cameraX = 0;
 let cameraY = 0;
@@ -25,8 +28,6 @@ let blockSize = 40;
 const keys = {};
 let mouseX = 0;
 let mouseY = 0;
-
-// スマホ用
 let joystickActive = false;
 let joystickDX = 0;
 let isMobile = false;
@@ -59,7 +60,6 @@ canvas.addEventListener('touchmove', (e) => {
   mouseY = (touch.clientY - rect.top) * scaleY + cameraY;
 }, { passive: false });
 
-// スマホ判定
 if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
   isMobile = true;
 }
@@ -94,12 +94,10 @@ function updateJoystick(touch) {
   const dist = Math.min(Math.sqrt(dx*dx), maxDist);
   const dir = dx >= 0 ? 1 : -1;
   joystickDX = (dist / maxDist) * dir;
-  
   const stickX = Math.cos(0) * dist * dir;
   joystickStick.style.transform = `translate(calc(-50% + ${stickX}px), -50%)`;
 }
 
-// アクションボタン
 document.getElementById('btnHook').addEventListener('touchstart', (e) => {
   e.preventDefault(); keys['s'] = true;
 });
@@ -141,6 +139,9 @@ socket.on('state', (data) => {
   players = data.players;
   blocks = data.blocks;
   bullets = data.bullets;
+  levers = data.levers;
+  doors = data.doors;
+  movables = data.movables;
   blockSize = data.blockSize || 40;
   
   if (players[myId]) {
@@ -188,8 +189,8 @@ function updateCamera() {
     const p = players[myId];
     cameraX = p.x - canvas.width / 2 + p.width / 2;
     cameraY = p.y - canvas.height / 2 + p.height / 2;
-    cameraX = Math.max(0, Math.min(cameraX, 2000 - canvas.width));
-    cameraY = Math.max(0, Math.min(cameraY, 600 - canvas.height));
+    cameraX = Math.max(0, Math.min(cameraX, 3000 - canvas.width));
+    cameraY = Math.max(0, Math.min(cameraY, 800 - canvas.height));
   }
 }
 
@@ -200,19 +201,16 @@ function drawPastaTank(p, isMe) {
   const w = p.width;
   const h = p.height;
   
-  // 影
   ctx.fillStyle = 'rgba(0,0,0,0.1)';
   ctx.beginPath();
   ctx.ellipse(x + w/2, y + h + 2, w/2 + 4, 6, 0, 0, Math.PI*2);
   ctx.fill();
   
-  // キャタピラ（履帯）- 黒い楕円
   ctx.fillStyle = '#2c2c2e';
   ctx.beginPath();
   ctx.ellipse(x + w/2, y + h - 6, w/2 + 2, 10, 0, 0, Math.PI*2);
   ctx.fill();
   
-  // キャタピラの線
   ctx.strokeStyle = '#48484a';
   ctx.lineWidth = 2;
   for (let i = -2; i <= 2; i++) {
@@ -222,7 +220,6 @@ function drawPastaTank(p, isMe) {
     ctx.stroke();
   }
   
-  // 皿（白い楕円）
   ctx.fillStyle = '#e5e5ea';
   ctx.beginPath();
   ctx.ellipse(x + w/2, y + h/2 + 2, w/2 + 4, h/2 + 2, 0, 0, Math.PI*2);
@@ -231,7 +228,6 @@ function drawPastaTank(p, isMe) {
   ctx.lineWidth = 1;
   ctx.stroke();
   
-  // パスタ（黄色い層）
   const pastaColors = ['#ffd60a', '#ffcc00', '#ffb800'];
   for (let i = 0; i < 3; i++) {
     ctx.fillStyle = pastaColors[i];
@@ -240,13 +236,11 @@ function drawPastaTank(p, isMe) {
     ctx.fill();
   }
   
-  // ミートソース（赤い上層）
   ctx.fillStyle = '#e94560';
   ctx.beginPath();
   ctx.ellipse(x + w/2, y + h/2 - 8, w/2 - 4, 9, 0, 0, Math.PI*2);
   ctx.fill();
   
-  // ミートボール（茶色い丸）
   const meatballPos = [[-8, -10], [6, -12], [0, -6]];
   ctx.fillStyle = '#8b4513';
   for (const mp of meatballPos) {
@@ -255,7 +249,6 @@ function drawPastaTank(p, isMe) {
     ctx.fill();
   }
   
-  // 砲身（パスタから伸びる黄色い棒）
   let angle = 0;
   if (p.state === 'hand_mode' && p.hand.active) {
     angle = p.hand.moveAngle * Math.PI / 180;
@@ -277,13 +270,11 @@ function drawPastaTank(p, isMe) {
   ctx.lineTo(bx, by);
   ctx.stroke();
   
-  // 砲口
   ctx.fillStyle = '#ffb800';
   ctx.beginPath();
   ctx.arc(bx, by, 5, 0, Math.PI*2);
   ctx.fill();
   
-  // 目
   const eyeDir = p.facing;
   ctx.fillStyle = '#fff';
   ctx.beginPath();
@@ -294,13 +285,11 @@ function drawPastaTank(p, isMe) {
   ctx.arc(x + w/2 + eyeDir * 13, y + h/2 - 4, 2.5, 0, Math.PI*2);
   ctx.fill();
   
-  // 名前
   ctx.fillStyle = isMe ? '#e94560' : '#8e8e93';
   ctx.font = 'bold 11px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(isMe ? 'YOU' : p.id.slice(0, 6), x + w/2, y - 12);
   
-  // HPバー
   const barW = w + 8;
   const barH = 4;
   ctx.fillStyle = '#e5e5ea';
@@ -342,20 +331,31 @@ function drawHand(p) {
   ctx.moveTo(sx, sy);
   ctx.lineTo(ex, ey);
   ctx.lineWidth = 4;
-  ctx.strokeStyle = p.hand.attached ? '#5856d6' : '#af52de';
+  
+  if (p.hand.targetType === 'lever') {
+    ctx.strokeStyle = '#5856d6';
+  } else if (p.hand.targetType === 'movable') {
+    ctx.strokeStyle = '#af52de';
+  } else {
+    ctx.strokeStyle = '#ff2d55';
+  }
+  
   ctx.setLineDash([4, 4]);
   ctx.stroke();
   ctx.setLineDash([]);
   
-  // ハンド先端（フォーク）
-  ctx.fillStyle = '#5856d6';
+  ctx.fillStyle = p.hand.targetType === 'lever' ? '#5856d6' : 
+                  p.hand.targetType === 'movable' ? '#af52de' : '#ff2d55';
   ctx.beginPath();
-  ctx.arc(ex, ey, 6, 0, Math.PI*2);
+  ctx.arc(ex, ey, 7, 0, Math.PI*2);
   ctx.fill();
+  
   ctx.fillStyle = '#fff';
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('🍴', ex, ey + 3);
+  const icon = p.hand.targetType === 'lever' ? '🔧' : 
+               p.hand.targetType === 'movable' ? '📦' : '✋';
+  ctx.fillText(icon, ex, ey + 3);
 }
 
 function drawBullets() {
@@ -381,17 +381,101 @@ function drawBlocks() {
     if (x + blockSize < 0 || x > canvas.width || y + blockSize < 0 || y > canvas.height) continue;
     
     if (b.type === 1) {
-      // 壁ブロック
       ctx.fillStyle = '#e5e5ea';
       ctx.fillRect(x, y, blockSize, blockSize);
       ctx.strokeStyle = '#c7c7cc';
       ctx.lineWidth = 1;
       ctx.strokeRect(x, y, blockSize, blockSize);
       
-      // ブロックの模様
       ctx.fillStyle = '#d1d1d6';
       ctx.fillRect(x + 4, y + 4, blockSize - 8, 3);
       ctx.fillRect(x + 4, y + blockSize/2, blockSize - 8, 3);
+    }
+  }
+}
+
+function drawLevers() {
+  for (const l of levers) {
+    const x = l.x - cameraX;
+    const y = l.y - cameraY;
+    
+    // 台座
+    ctx.fillStyle = '#8e8e93';
+    ctx.fillRect(x, y + l.h - 8, l.w, 8);
+    
+    // レバー
+    ctx.save();
+    ctx.translate(x + l.w/2, y + l.h - 8);
+    const angle = l.pulled ? Math.PI / 3 : -Math.PI / 6;
+    ctx.rotate(angle);
+    
+    ctx.fillStyle = l.pulled ? '#34c759' : '#ff9500';
+    ctx.fillRect(-3, -30, 6, 30);
+    
+    // 握り
+    ctx.fillStyle = '#e94560';
+    ctx.beginPath();
+    ctx.arc(0, -30, 6, 0, Math.PI*2);
+    ctx.fill();
+    
+    ctx.restore();
+    
+    // ラベル
+    ctx.fillStyle = '#8e8e93';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(l.pulled ? 'ON' : 'OFF', x + l.w/2, y - 4);
+  }
+}
+
+function drawDoors() {
+  for (const d of doors) {
+    const x = d.x - cameraX;
+    const y = d.y - cameraY;
+    
+    if (d.openHeight >= d.h) continue;
+    
+    const drawH = d.h - d.openHeight;
+    
+    // ドア枠
+    ctx.fillStyle = '#48484a';
+    ctx.fillRect(x - 2, y - 2, d.w + 4, d.h + 4);
+    
+    // ドア本体
+    ctx.fillStyle = '#2c2c2e';
+    ctx.fillRect(x, y, d.w, drawH);
+    
+    // 模様
+    ctx.strokeStyle = '#636366';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 4, y + 4, d.w - 8, drawH - 8);
+    
+    // 開いた部分は空
+    if (d.openHeight > 0) {
+      ctx.fillStyle = '#f5f5f7';
+      ctx.fillRect(x, y + drawH, d.w, d.openHeight);
+    }
+  }
+}
+
+function drawMovables() {
+  for (const m of movables) {
+    const x = m.x - cameraX;
+    const y = m.y - cameraY;
+    
+    ctx.fillStyle = m.heldBy ? '#af52de' : '#5856d6';
+    ctx.fillRect(x, y, m.w, m.h);
+    
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 3, y + 3, m.w - 6, m.h - 6);
+    
+    // 掴まれている印
+    if (m.heldBy) {
+      ctx.fillStyle = '#fff';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('✋', x + m.w/2, y + m.h/2 + 3);
     }
   }
 }
@@ -400,7 +484,6 @@ function drawBackground() {
   ctx.fillStyle = '#f5f5f7';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   
-  // グリッド
   ctx.strokeStyle = 'rgba(0,0,0,0.04)';
   ctx.lineWidth = 1;
   const offX = -cameraX % 40;
@@ -413,12 +496,8 @@ function drawBackground() {
   }
 }
 
-function drawWarpPoints() {
-  // ワープポイント
-}
-
 function drawMinimap() {
-  const mw = 100, mh = 40;
+  const mw = 120, mh = 32;
   const mx = canvas.width - mw - 10;
   const my = 10;
   
@@ -428,8 +507,8 @@ function drawMinimap() {
   ctx.lineWidth = 1;
   ctx.strokeRect(mx, my, mw, mh);
   
-  const scaleX = mw / 2000;
-  const scaleY = mh / 600;
+  const scaleX = mw / 3000;
+  const scaleY = mh / 800;
   
   for (const id in players) {
     const p = players[id];
@@ -442,6 +521,9 @@ function draw() {
   drawBackground();
   updateCamera();
   drawBlocks();
+  drawDoors();
+  drawLevers();
+  drawMovables();
   
   for (const id in players) {
     const p = players[id];
@@ -453,7 +535,6 @@ function draw() {
   drawBullets();
   drawMinimap();
   
-  // 照準線（自分のみ）
   if (players[myId]) {
     const p = players[myId];
     const sx = p.x + p.width/2 - cameraX;
@@ -461,7 +542,7 @@ function draw() {
     const mx = mouseX - cameraX;
     const my = mouseY - cameraY;
     
-    ctx.strokeStyle = 'rgba(233,69,96,0.2)';
+    ctx.strokeStyle = 'rgba(233,69,96,0.15)';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
@@ -470,7 +551,6 @@ function draw() {
     ctx.stroke();
     ctx.setLineDash([]);
     
-    // 照準
     ctx.strokeStyle = '#e94560';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -485,7 +565,6 @@ function draw() {
   requestAnimationFrame(draw);
 }
 
-// 入力送信
 setInterval(() => {
   let left = keys['a'] || keys['arrowleft'];
   let right = keys['d'] || keys['arrowright'];

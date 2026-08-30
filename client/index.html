@@ -3,18 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scroll Fighter PVP</title>
+  <title>PASU.io - パスタ戦車PVP</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="ui">
-    <h1>⚔️ Scroll Fighter PVP</h1>
-    <p>WASD / 矢印キー: 移動 | スペース: ジャンプ | J: 攻撃</p>
-    <p id="status">サーバーに接続中...</p>
+    <h1>PASU.io</h1>
+    <p>A/D: 移動 | S: パスタフック | W: パスタモード | H: 休憩所</p>
+    <div id="status">接続中...</div>
+    <div id="hud" style="display:none;">
+      <div>HP: <span id="hp">100</span></div>
+      <div>コイン: <span id="coins">0</span></div>
+      <div>ゾーン: <span id="zone">戦場</span></div>
+    </div>
   </div>
+  
+  <div id="mapSelect" style="display:none;">
+    <h2>リスポーン地点を選択</h2>
+    <div id="mapList"></div>
+  </div>
+  
   <canvas id="gameCanvas" width="800" height="400"></canvas>
   
-  <!-- Socket.io CDN -->
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script src="game.js"></script>
 </body>

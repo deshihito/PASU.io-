@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scroll Fighter PVP</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="ui">
+    <h1>⚔️ Scroll Fighter PVP</h1>
+    <p>WASD / 矢印キー: 移動 | スペース: ジャンプ | J: 攻撃</p>
+    <p id="status">サーバーに接続中...</p>
+  </div>
+  <canvas id="gameCanvas" width="800" height="400"></canvas>
+  
+  <!-- Socket.io CDN -->
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

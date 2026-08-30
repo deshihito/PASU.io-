@@ -281,11 +281,7 @@ socket.on('state', (data) => {
     setTimeout(() => { if (comboData === data.combo) comboData = null; }, 2000);
   }
   
-  if (me.zone === 'rest') {
-    UI.showMapSelect(data.maps, (mi, si) => socket.emit('selectSpawn', mi, si));
-  } else {
-    UI.hideMapSelect();
-  }
+  UI.hideMapSelect();
   
   lastMyState = { ...me };
 });

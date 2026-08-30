@@ -19,8 +19,8 @@ const prevPositions = new Map();
 function resolveBlockCollision(p) {
   // 高速移動時の貫通防止：複数回小刻みに移動してチェック
   const steps = Math.max(1, Math.ceil(Math.max(Math.abs(p.vx), Math.abs(p.vy)) / (BLOCK_SIZE * 0.5)));
-  const stepVx = p.vx / steps;
-  const stepVy = p.vy / steps;
+  const stepVx = (p.vx + (p.windX || 0)) / steps;
+  const stepVy = (p.vy + (p.windY || 0)) / steps;
   
   let prevX = p.x;
   let prevY = p.y;

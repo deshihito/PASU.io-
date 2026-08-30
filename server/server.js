@@ -331,9 +331,6 @@ setInterval(() => {
     
     // 物理
     if (p.state !== 'hand_mode') p.vy += C.GRAVITY;
-    p.x += p.vx + (p.windX || 0);
-    p.y += p.vy + (p.windY || 0);
-    
     physics.resolveBlockCollision(p);
     physics.checkWarpPads(p, WARP_PADS, MAPS);
     

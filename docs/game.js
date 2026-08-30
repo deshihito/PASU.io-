@@ -3,6 +3,14 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+// Canvas のサイズをウィンドウサイズに設定
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
 // グローバルカメラ（他モジュールから参照用）
 window.cameraX = 0;
 window.cameraY = 0;
@@ -12,6 +20,7 @@ Input.init(canvas);
 Renderer.init(canvas);
 UI.init();
 Audio.init();
+
 
 const SERVER_URL = window.location.hostname === 'deshihito.github.io' 
   ? 'https://pasu-io.onrender.com' 

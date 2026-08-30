@@ -6,6 +6,8 @@ const Renderer = {
   cameraX: 0,
   cameraY: 0,
   blockSize: 40,
+  hookTrails: {}, // フック軌跡
+  comboTexts: [], // コンボ表示
   
   init(canvas) {
     this.canvas = canvas;
@@ -121,6 +123,32 @@ const Renderer = {
           ctx.fillStyle = '#0ea5e9';
           ctx.font = '16px sans-serif';
           ctx.fillText('↑', x + 10, y + 28);
+          break;
+        case 9: // 暗闇
+          ctx.fillStyle = '#1c1917';
+          ctx.fillRect(x, y, this.blockSize, this.blockSize);
+          ctx.fillStyle = '#44403c';
+          ctx.fillRect(x + 4, y + 4, this.blockSize - 8, this.blockSize - 8);
+          break;
+        case 10: // 崩落
+          ctx.fillStyle = '#a8a29e';
+          ctx.fillRect(x, y, this.blockSize, this.blockSize);
+          ctx.strokeStyle = '#78716c';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x, y, this.blockSize, this.blockSize);
+          // 崩落タイマー表示
+          if (b.collapseTimer !== undefined) {
+            const ratio = b.collapseTimer / 120;
+            ctx.fillStyle = `rgba(220, 38, 38, ${1 - ratio})`;
+            ctx.fillRect(x + 2, y + 2, (this.blockSize - 4) * ratio, 4);
+          }
+          break;
+        case 11: // 回復
+          ctx.fillStyle = '#dcfce7';
+          ctx.fillRect(x, y, this.blockSize, this.blockSize);
+          ctx.fillStyle = '#22c55e';
+          ctx.font = '16px sans-serif';
+          ctx.fillText('+', x + 12, y + 28);
           break;
       }
     }
@@ -256,6 +284,15 @@ const Renderer = {
       }
     }
     
+    // シールドエフェクト
+    if (p.invincible > 0 && p.invincible > 30) {
+      ctx.strokeStyle = `rgba(255, 214, 10, ${p.invincible / 120})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x + w/2, y + h/2, w, 0, Math.PI*2);
+      ctx.stroke();
+    }
+    
     ctx.globalAlpha = 1;
   },
   
@@ -266,6 +303,26 @@ const Renderer = {
     const sy = p.y + p.height/2 - this.cameraY;
     const ex = p.hook.x - this.cameraX;
     const ey = p.hook.y - this.cameraY;
+    
+    // 軌跡
+    const trail = this.hookTrails[p.id] || [];
+    trail.push({ x: ex, y: ey, life: 10 });
+    if (trail.length > 15) trail.shift();
+    this.hookTrails[p.id] = trail;
+    
+    ctx.strokeStyle = 'rgba(255, 149, 0, 0.3)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < trail.length; i++) {
+      const t = trail[i];
+      const alpha = t.life / 10;
+      ctx.globalAlpha = alpha * 0.5;
+      if (i === 0) ctx.moveTo(t.x, t.y);
+      else ctx.lineTo(t.x, t.y);
+      t.life--;
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
     
     ctx.beginPath();
     ctx.moveTo(sx, sy);
@@ -330,6 +387,14 @@ const Renderer = {
       ctx.beginPath();
       ctx.arc(x - 1, y - 1, 2, 0, Math.PI*2);
       ctx.fill();
+      
+      // ミサイルの煙
+      if (b.missile) {
+        ctx.fillStyle = 'rgba(100,100,100,0.3)';
+        ctx.beginPath();
+        ctx.arc(x - b.vx * 2, y - b.vy * 2, 3, 0, Math.PI*2);
+        ctx.fill();
+      }
     }
   },
   
@@ -428,6 +493,35 @@ const Renderer = {
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('WARP', x + wp.w/2, y + wp.h/2 + 3);
+    }
+  },
+  
+  drawTraps(traps) {
+    const ctx = this.ctx;
+    if (!traps) return;
+    for (const t of traps) {
+      const x = t.x - this.cameraX;
+      const y = t.y - this.cameraY;
+      ctx.fillStyle = 'rgba(139, 69, 19, 0.6)';
+      ctx.beginPath();
+      ctx.arc(x, y, t.radius, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = '#8b4513';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  },
+  
+  drawSmokeScreens(smokeScreens) {
+    const ctx = this.ctx;
+    if (!smokeScreens) return;
+    for (const s of smokeScreens) {
+      const x = s.x - this.cameraX;
+      const y = s.y - this.cameraY;
+      ctx.fillStyle = 'rgba(200, 200, 200, 0.4)';
+      ctx.beginPath();
+      ctx.arc(x, y, s.radius, 0, Math.PI*2);
+      ctx.fill();
     }
   },
   
@@ -548,12 +642,22 @@ const Renderer = {
     const mx = mouseX - this.cameraX;
     const my = mouseY - this.cameraY;
     
+    // フック到達距離表示
     ctx.strokeStyle = 'rgba(233,69,96,0.15)';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(sx, sy);
     ctx.lineTo(mx, my);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // 最大射程の円
+    ctx.strokeStyle = 'rgba(233,69,96,0.08)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 6]);
+    ctx.beginPath();
+    ctx.arc(sx, sy, C.HOOK_MAX_LEN, 0, Math.PI*2);
     ctx.stroke();
     ctx.setLineDash([]);
     
@@ -566,5 +670,107 @@ const Renderer = {
     ctx.moveTo(mx - 6, my); ctx.lineTo(mx + 6, my);
     ctx.moveTo(mx, my - 6); ctx.lineTo(mx, my + 6);
     ctx.stroke();
+  },
+  
+  drawEnemyMarkers(players, myId) {
+    const ctx = this.ctx;
+    const me = players[myId];
+    if (!me) return;
+    
+    for (const id in players) {
+      if (id === myId) continue;
+      const p = players[id];
+      if (p.zone !== 'battle' || p.inBush) continue;
+      
+      const x = p.x - this.cameraX;
+      const y = p.y - this.cameraY;
+      
+      // 画面外なら画面端に三角形
+      if (x < 0 || x > this.canvas.width || y < 0 || y > this.canvas.height) {
+        const cx = Math.max(20, Math.min(this.canvas.width - 20, x));
+        const cy = Math.max(20, Math.min(this.canvas.height - 20, y));
+        const angle = Math.atan2(y - this.canvas.height/2, x - this.canvas.width/2);
+        
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        ctx.fillStyle = '#e94560';
+        ctx.beginPath();
+        ctx.moveTo(10, 0);
+        ctx.lineTo(-5, -6);
+        ctx.lineTo(-5, 6);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  },
+  
+  drawHandMarker(p, levers, movables, blocks) {
+    // ハンド掴み可能マーカー
+    const ctx = this.ctx;
+    const mx = p.mouseX - this.cameraX;
+    const my = p.mouseY - this.cameraY;
+    
+    for (const l of levers) {
+      const lx = l.x - this.cameraX;
+      const ly = l.y - this.cameraY;
+      const dist = Math.sqrt((mx - lx - l.w/2)**2 + (my - ly - l.h/2)**2);
+      if (dist < 30) {
+        ctx.fillStyle = 'rgba(88, 86, 214, 0.5)';
+        ctx.beginPath();
+        ctx.arc(lx + l.w/2, ly + l.h/2, 15, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🔧', lx + l.w/2, ly + l.h/2 + 4);
+      }
+    }
+  },
+  
+  drawChargeGauge(p) {
+    if (!p.charging || p.chargeLevel <= 0) return;
+    const ctx = this.ctx;
+    const x = this.canvas.width / 2 - 50;
+    const y = this.canvas.height - 60;
+    const ratio = p.chargeLevel / C.CHARGE_MAX;
+    
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(x - 2, y - 2, 104, 14);
+    ctx.fillStyle = `hsl(${ratio * 120}, 70%, 50%)`;
+    ctx.fillRect(x, y, 100 * ratio, 10);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, 100, 10);
+  },
+  
+  drawCombo(comboData) {
+    if (!comboData) return;
+    const ctx = this.ctx;
+    const texts = ['', 'Single Kill!', 'Double Kill!', 'Triple Kill!', 'Quadra Kill!', 'PENTA KILL!'];
+    const text = texts[Math.min(comboData.count, 5)] || 'UNSTOPPABLE!';
+    
+    ctx.fillStyle = '#ffd60a';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.strokeText(text, this.canvas.width / 2, 80);
+    ctx.fillText(text, this.canvas.width / 2, 80);
+  },
+  
+  drawDarknessOverlay(p) {
+    if (!p.inDarkness) return;
+    const ctx = this.ctx;
+    // 周囲だけ見える円形マスク
+    const x = p.x + p.width/2 - this.cameraX;
+    const y = p.y + p.height/2 - this.cameraY;
+    
+    const gradient = ctx.createRadialGradient(x, y, 30, x, y, 200);
+    gradient.addColorStop(0, 'rgba(0,0,0,0)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0.85)');
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 };

@@ -2,28 +2,45 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>PASU.io - パスタ戦車PVP</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="ui">
     <h1>PASU.io</h1>
-    <p>A/D: 移動 | S: パスタフック | W: パスタモード | H: 休憩所</p>
+    <p>PC: A/D移動 | S:フック | W:ハンド | スペース:攻撃 | H:休憩所 | マウス:照準</p>
     <div id="status">接続中...</div>
-    <div id="hud" style="display:none;">
+    <div id="hud">
       <div>HP: <span id="hp">100</span></div>
-      <div>コイン: <span id="coins">0</span></div>
-      <div>ゾーン: <span id="zone">戦場</span></div>
+      <div>COIN: <span id="coins">0</span></div>
+      <div>ZONE: <span id="zone">BATTLE</span></div>
     </div>
   </div>
   
-  <div id="mapSelect" style="display:none;">
+  <div id="mapSelect">
     <h2>リスポーン地点を選択</h2>
     <div id="mapList"></div>
   </div>
   
-  <canvas id="gameCanvas" width="800" height="400"></canvas>
+  <div id="gameContainer">
+    <canvas id="gameCanvas" width="800" height="450"></canvas>
+  </div>
+  
+  <!-- スマホ用コントロール -->
+  <div id="mobileControls">
+    <div class="joystick-area" id="joystickArea">
+      <div class="joystick-base">
+        <div class="joystick-stick" id="joystickStick"></div>
+      </div>
+    </div>
+    <div class="action-buttons">
+      <button class="action-btn btn-hook" id="btnHook">HOOK</button>
+      <button class="action-btn btn-hand" id="btnHand">HAND</button>
+      <button class="action-btn btn-attack" id="btnAttack">ATK</button>
+      <button class="action-btn btn-rest" id="btnRest">REST</button>
+    </div>
+  </div>
   
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script src="game.js"></script>

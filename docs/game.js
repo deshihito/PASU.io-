@@ -36,8 +36,27 @@ let joystickDX = 0;
 let isMobile = false;
 let returningTimer = 0;
 
+// ===== 開発者ツール =====
+let devMode = false;
+let devShowHitbox = false;
+let devShowGrid = false;
+let devShowIds = false;
+let lastFrameTime = performance.now();
+let fps = 60;
+
 window.addEventListener('keydown', (e) => {
   keys[e.key.toLowerCase()] = true;
+  
+  // 開発者ツール
+  if (e.key === '`' || e.key === '半角/全角' || e.key === '@') {
+    devMode = !devMode;
+  }
+  if (devMode) {
+    if (e.key === '1') devShowHitbox = !devShowHitbox;
+    if (e.key === '2') devShowGrid = !devShowGrid;
+    if (e.key === '3') devShowIds = !devShowIds;
+  }
+  
   if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) {
     e.preventDefault();
   }
@@ -62,8 +81,6 @@ canvas.addEventListener('touchstart', (e) => {
     const rect = canvas.getBoundingClientRect();
     const cx = (t.clientX - rect.left) * (canvas.width / rect.width);
     const cy = (t.clientY - rect.top) * (canvas.height / rect.height);
-    
-    // 右半分かつボタンエリア以外なら照準更新
     if (cx > canvas.width * 0.35 && cy < canvas.height - 180) {
       mouseX = cx + cameraX;
       mouseY = cy + cameraY;
@@ -78,7 +95,6 @@ canvas.addEventListener('touchmove', (e) => {
     const rect = canvas.getBoundingClientRect();
     const cx = (t.clientX - rect.left) * (canvas.width / rect.width);
     const cy = (t.clientY - rect.top) * (canvas.height / rect.height);
-    
     if (cx > canvas.width * 0.35 && cy < canvas.height - 180) {
       mouseX = cx + cameraX;
       mouseY = cy + cameraY;
@@ -146,6 +162,29 @@ document.getElementById('btnRest').addEventListener('touchstart', (e) => {
 });
 document.getElementById('btnRest').addEventListener('touchend', (e) => {
   e.preventDefault(); keys['h'] = false;
+});
+
+// ===== マップエディタ（devMode時） =====
+canvas.addEventListener('mousedown', (e) => {
+  if (!devMode) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const worldX = (e.clientX - rect.left) * scaleX + cameraX;
+  const worldY = (e.clientY - rect.top) * scaleY + cameraY;
+  const cx = Math.floor(worldX / blockSize);
+  const cy = Math.floor(worldY / blockSize);
+  const existing = blocks.find(b => b.c === cx && b.r === cy);
+  if (e.shiftKey) {
+    if (existing) {
+      const idx = blocks.indexOf(existing);
+      blocks.splice(idx, 1);
+    }
+  } else {
+    if (!existing) {
+      blocks.push({ c: cx, r: cy, type: 1 });
+    }
+  }
 });
 
 socket.on('connect', () => {
@@ -217,13 +256,12 @@ function hideMapSelect() {
 function updateCamera() {
   if (players[myId]) {
     const p = players[myId];
-    cameraX = p.x - canvas.width / 2 + p.width / 2;
-    cameraY = p.y - canvas.height / 2 + p.height / 2;
-    
     if (p.zone === 'rest') {
       cameraX = restZone.x + restZone.w/2 - canvas.width/2;
       cameraY = restZone.y + restZone.h/2 - canvas.height/2;
     } else {
+      cameraX = p.x - canvas.width / 2 + p.width / 2;
+      cameraY = p.y - canvas.height / 2 + p.height / 2;
       cameraX = Math.max(0, Math.min(cameraX, 3000 - canvas.width));
       cameraY = Math.max(0, Math.min(cameraY, 800 - canvas.height));
     }
@@ -231,7 +269,6 @@ function updateCamera() {
 }
 
 function drawPastaTank(p, isMe) {
-  // ブッシュ内は自分以外見えない
   if (p.inBush && !isMe) return;
   
   const x = p.x - cameraX;
@@ -338,7 +375,6 @@ function drawPastaTank(p, isMe) {
   ctx.fillStyle = p.hp > 50 ? '#34c759' : p.hp > 25 ? '#ff9500' : '#e94560';
   ctx.fillRect(x + w/2 - barW/2, y - 8, barW * (p.hp / p.maxHp), barH);
   
-  // 武器スロット雛形
   if (isMe) {
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     for (let i = 0; i < 4; i++) {
@@ -440,7 +476,6 @@ function drawBlocks() {
       ctx.fillRect(x + 4, y + 4, blockSize - 8, 3);
       ctx.fillRect(x + 4, y + blockSize/2, blockSize - 8, 3);
     } else if (b.type === 4) {
-      // ブッシュ
       ctx.fillStyle = '#34c759';
       ctx.fillRect(x, y, blockSize, blockSize);
       ctx.fillStyle = '#30d158';
@@ -564,11 +599,9 @@ function drawRestZone() {
   ctx.lineWidth = 2;
   ctx.strokeRect(x, y, restZone.w, restZone.h);
   
-  // 床
   ctx.fillStyle = '#e5e5ea';
   ctx.fillRect(x, y + restZone.h - 40, restZone.w, 40);
   
-  // ショップNPC
   if (shopNpc.x) {
     const nx = shopNpc.x - cameraX;
     const ny = shopNpc.y - cameraY;
@@ -581,7 +614,6 @@ function drawRestZone() {
     ctx.textAlign = 'center';
     ctx.fillText('SHOP', nx + shopNpc.w/2, ny - 4);
     
-    // 吹き出し
     ctx.fillStyle = '#fff';
     ctx.beginPath();
     ctx.roundRect(nx - 20, ny - 40, 80, 28, 6);
@@ -594,7 +626,6 @@ function drawRestZone() {
     ctx.fillText('いらっしゃい！', nx + 20, ny - 22);
   }
   
-  // スロット表示（休憩所のみ）
   ctx.fillStyle = '#1d1d1f';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
@@ -681,6 +712,68 @@ function drawReturning() {
   ctx.strokeRect(bx, by, barW, barH);
 }
 
+function drawDevTools() {
+  if (!devMode) return;
+  
+  const now = performance.now();
+  fps = Math.round(1000 / (now - lastFrameTime));
+  lastFrameTime = now;
+  
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillRect(10, 50, 240, 220);
+  ctx.strokeStyle = '#34c759';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 50, 240, 220);
+  
+  ctx.fillStyle = '#34c759';
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'left';
+  
+  const p = players[myId];
+  if (p) {
+    ctx.fillText(`FPS: ${fps}`, 20, 70);
+    ctx.fillText(`POS: ${Math.round(p.x)},${Math.round(p.y)}`, 20, 88);
+    ctx.fillText(`VEL: ${p.vx.toFixed(2)},${p.vy.toFixed(2)}`, 20, 106);
+    ctx.fillText(`STATE: ${p.state}`, 20, 124);
+    ctx.fillText(`GROUND: ${p.onGround}`, 20, 142);
+    ctx.fillText(`BUSH: ${p.inBush}`, 20, 160);
+    ctx.fillText(`BLOCKS: ${blocks.length}`, 20, 178);
+    ctx.fillText(`PLAYERS: ${Object.keys(players).length}`, 20, 196);
+    ctx.fillText(`BULLETS: ${bullets.length}`, 20, 214);
+    ctx.fillText(`[1]Hitbox [2]Grid [3]ID`, 20, 232);
+    ctx.fillText(`CLICK:place SHIFT+CLICK:del`, 20, 250);
+  }
+  
+  if (devShowGrid) {
+    ctx.strokeStyle = 'rgba(52,199,89,0.25)';
+    ctx.lineWidth = 1;
+    for (let x = -cameraX % blockSize; x < canvas.width; x += blockSize) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+    }
+    for (let y = -cameraY % blockSize; y < canvas.height; y += blockSize) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    }
+  }
+  
+  if (devShowHitbox && p) {
+    ctx.strokeStyle = '#ff2d55';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(p.x - cameraX, p.y - cameraY, p.width, p.height);
+    
+    ctx.fillStyle = '#ff2d55';
+    ctx.fillText(`MOUSE: ${Math.round(mouseX)},${Math.round(mouseY)}`, 20, 268);
+  }
+  
+  if (devShowIds) {
+    ctx.fillStyle = '#007aff';
+    ctx.font = '9px monospace';
+    for (const id in players) {
+      const pp = players[id];
+      ctx.fillText(`${id.slice(0,6)}`, pp.x - cameraX, pp.y - cameraY - 20);
+    }
+  }
+}
+
 function draw() {
   drawBackground();
   updateCamera();
@@ -701,8 +794,8 @@ function draw() {
   drawBullets();
   drawMinimap();
   drawReturning();
+  drawDevTools();
   
-  // 照準
   if (players[myId] && !players[myId].returning) {
     const p = players[myId];
     const sx = p.x + p.width/2 - cameraX;

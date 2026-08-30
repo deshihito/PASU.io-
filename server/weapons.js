@@ -11,7 +11,9 @@ const WEAPONS = {
     spread: 0.05,
     pierce: false,
     bounce: false,
-    chargeable: false,
+    chargeable: true, // チャージ可能に
+    chargeMaxDamage: 25, // チャージ時最大ダメージ
+    chargeMaxSpeed: 20,  // チャージ時最大速度
     icon: '🍝'
   },
   [C.WEAPON_MACARONI_LAUNCHER]: {
@@ -119,13 +121,37 @@ function createSubWeapon(subId) {
   };
 }
 
+// ===== ウェポンスロットシステム =====
+function createWeaponSlots() {
+  return [
+    createWeapon(C.WEAPON_SPAGHETTI_GUN),      // スロット1
+    createWeapon(C.WEAPON_MACARONI_LAUNCHER),  // スロット2
+    createWeapon(C.WEAPON_PENNE_SHOTGUN),      // スロット3
+    createWeapon(C.WEAPON_RAVIOLI_GRENADE)     // スロット4
+  ];
+}
+
+function switchWeapon(weaponSlots, slotIndex) {
+  if (slotIndex < 0 || slotIndex >= weaponSlots.length) return null;
+  return weaponSlots[slotIndex];
+}
+
 // ===== 射撃処理 =====
-function fireWeapon(player, weapon, angle, bullets, timestamp) {
+function fireWeapon(player, weapon, angle, bullets, timestamp, chargeLevel = 0) {
   if (timestamp - weapon.lastFired < weapon.cooldown) return false;
   weapon.lastFired = timestamp;
   
   const spread = (Math.random() - 0.5) * weapon.spread * 2;
   const finalAngle = angle + spread;
+  
+  // チャージショット処理
+  let damage = weapon.damage;
+  let speed = weapon.speed;
+  if (weapon.chargeable && chargeLevel > 0) {
+    const chargeRatio = Math.min(1, chargeLevel / 60); // 最大60フレーム
+    damage = weapon.damage + (weapon.chargeMaxDamage - weapon.damage) * chargeRatio;
+    speed = weapon.speed + (weapon.chargeMaxSpeed - weapon.speed) * chargeRatio;
+  }
   
   if (weapon.pellets) {
     // ショットガン：複数弾
@@ -134,11 +160,11 @@ function fireWeapon(player, weapon, angle, bullets, timestamp) {
       bullets.push({
         x: player.x + player.width/2,
         y: player.y + player.height/2,
-        vx: Math.cos(finalAngle + pelletSpread) * weapon.speed,
-        vy: Math.sin(finalAngle + pelletSpread) * weapon.speed,
+        vx: Math.cos(finalAngle + pelletSpread) * speed,
+        vy: Math.sin(finalAngle + pelletSpread) * speed,
         owner: player.id,
         life: C.BULLET_LIFE,
-        damage: weapon.damage,
+        damage: damage,
         color: player.color,
         pierce: weapon.pierce,
         bounce: weapon.bounce,
@@ -149,11 +175,11 @@ function fireWeapon(player, weapon, angle, bullets, timestamp) {
     bullets.push({
       x: player.x + player.width/2,
       y: player.y + player.height/2,
-      vx: Math.cos(finalAngle) * weapon.speed,
-      vy: Math.sin(finalAngle) * weapon.speed,
+      vx: Math.cos(finalAngle) * speed,
+      vy: Math.sin(finalAngle) * speed,
       owner: player.id,
       life: C.BULLET_LIFE,
-      damage: weapon.damage,
+      damage: damage,
       color: player.color,
       pierce: weapon.pierce,
       bounce: weapon.bounce,
@@ -184,6 +210,8 @@ module.exports = {
   SUB_WEAPONS,
   createWeapon,
   createSubWeapon,
+  createWeaponSlots,
+  switchWeapon,
   fireWeapon,
   useSubWeapon
 };

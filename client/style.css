@@ -1,1 +1,94 @@
-#
+body {
+  margin: 0;
+  background: #0f0f1a;
+  color: #fff;
+  font-family: 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#ui {
+  text-align: center;
+  margin: 15px 0;
+}
+
+#ui h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  color: #e94560;
+  text-shadow: 0 0 10px #e94560;
+}
+
+#ui p {
+  margin: 4px 0;
+  font-size: 13px;
+  color: #aaa;
+}
+
+#status {
+  color: #ff0;
+  font-weight: bold;
+  margin: 8px 0;
+}
+
+#hud {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+#hud span {
+  color: #0f0;
+  font-weight: bold;
+}
+
+#mapSelect {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0,0,0,0.9);
+  border: 2px solid #e94560;
+  border-radius: 12px;
+  padding: 30px;
+  text-align: center;
+  z-index: 100;
+}
+
+#mapSelect h2 {
+  color: #e94560;
+  margin-bottom: 20px;
+}
+
+#mapList {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.map-btn {
+  background: #16213e;
+  border: 2px solid #0f3460;
+  color: #fff;
+  padding: 15px 25px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.map-btn:hover {
+  border-color: #e94560;
+  background: #1a1a3e;
+}
+
+canvas {
+  border: 2px solid #e94560;
+  border-radius: 8px;
+  background: #1a1a2e;
+  max-width: 100%;
+}

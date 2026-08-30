@@ -10,6 +10,14 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+// ===== 静的ファイル配信（docsフォルダ） =====
+app.use(express.static(path.join(__dirname, '../docs')));
+
+// ルートアクセス時にゲーム画面を返す
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../docs/index.html'));
+});
+
 
 // ===== ゲーム定数 =====
 const GRAVITY = 0.5;

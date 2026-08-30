@@ -7,111 +7,122 @@ const GAME_WIDTH = C.GAME_WIDTH;
 const GAME_HEIGHT = C.GAME_HEIGHT;
 const HOOK_SPEED = C.HOOK_SPEED;
 const HOOK_MAX_LEN = C.HOOK_MAX_LEN;
-const HOOK_COOLDOWN = C.HOOK_COOLDOWN;
 const HAND_SPEED = C.HAND_SPEED;
 const HAND_MAX_LEN = C.HAND_MAX_LEN;
 const BULLET_SPEED = C.BULLET_SPEED;
 const BULLET_LIFE = C.BULLET_LIFE;
-const BULLET_KNOCKBACK = C.BULLET_KNOCKBACK;
 const RETURN_TIME = C.RETURN_TIME;
-const COYOTE_TIME = C.COYOTE_TIME;
-const BUSH_SPEED_MULT = C.BUSH_SPEED_MULT;
+
+// 前フレームの位置を保持（接地判定用）
+const prevPositions = new Map();
 
 function resolveBlockCollision(p) {
-  const c1 = Math.floor(p.x / BLOCK_SIZE);
-  const c2 = Math.floor((p.x + p.width) / BLOCK_SIZE);
-  const r1 = Math.floor(p.y / BLOCK_SIZE);
-  const r2 = Math.floor((p.y + p.height) / BLOCK_SIZE);
+  // 高速移動時の貫通防止：複数回小刻みに移動してチェック
+  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(p.vx), Math.abs(p.vy)) / (BLOCK_SIZE * 0.5)));
+  const stepVx = p.vx / steps;
+  const stepVy = p.vy / steps;
   
-  p.onGround = false;
-  p.inBush = false;
-  p.onIce = false;
-  p.windX = 0;
-  p.windY = 0;
+  let prevX = p.x;
+  let prevY = p.y;
   
-  let wallContactCount = 0;
-  let groundContactCount = 0;
-  
-  for (let c = c1; c <= c2; c++) {
-    for (let r = r1; r <= r2; r++) {
-      const b = maps.blockAt(c, r);
-      if (!b) continue;
-      
-      if (b.type === C.BLOCK_BUSH) {
-        p.inBush = true;
-        continue;
-      }
-      if (b.type === C.BLOCK_ICE) {
-        p.onIce = true;
-        continue;
-      }
-      if (b.type === C.BLOCK_JUMP && p.vy > 0) {
-        p.vy = -18;
-        continue;
-      }
-      if (b.type === C.BLOCK_SPIKE) {
-        if (p.invincible <= 0) {
-          p.hp -= 1;
-          p.invincible = 10;
+  for (let step = 0; step < steps; step++) {
+    p.x += stepVx;
+    p.y += stepVy;
+    
+    const c1 = Math.floor(p.x / BLOCK_SIZE);
+    const c2 = Math.floor((p.x + p.width) / BLOCK_SIZE);
+    const r1 = Math.floor(p.y / BLOCK_SIZE);
+    const r2 = Math.floor((p.y + p.height) / BLOCK_SIZE);
+    
+    if (step === 0) {
+      p.onGround = false;
+      p.inBush = false;
+      p.onIce = false;
+      p.windX = 0;
+      p.windY = 0;
+      p.inDarkness = false;
+      p.onHeal = false;
+    }
+    
+    for (let c = c1; c <= c2; c++) {
+      for (let r = r1; r <= r2; r++) {
+        const b = maps.blockAt(c, r);
+        if (!b) continue;
+        
+        if (b.type === C.BLOCK_BUSH) {
+          p.inBush = true;
+          continue;
         }
-        continue;
-      }
-      if (b.type === C.BLOCK_WIND_RIGHT) { p.windX = 0.8; continue; }
-      if (b.type === C.BLOCK_WIND_LEFT) { p.windX = -0.8; continue; }
-      if (b.type === C.BLOCK_WIND_UP) { p.windY = -0.5; continue; }
-      if (b.type !== C.BLOCK_WALL) continue;
-      
-      const bx = b.c * BLOCK_SIZE;
-      const by = b.r * BLOCK_SIZE;
-      
-      const overlapLeft = (p.x + p.width) - bx;
-      const overlapRight = (bx + BLOCK_SIZE) - p.x;
-      const overlapTop = (p.y + p.height) - by;
-      const overlapBottom = (by + BLOCK_SIZE) - p.y;
-      
-      const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
-      
-      // 接地判定の改善：壁に張り付いている時もonGroundがtrueになる問題を修正
-      if (minOverlap === overlapTop && p.vy >= 0 && overlapTop < overlapLeft && overlapTop < overlapRight) {
-        p.y = by - p.height;
-        p.vy = 0;
-        p.onGround = true;
-        groundContactCount++;
-      } else if (minOverlap === overlapBottom && p.vy < 0) {
-        p.y = by + BLOCK_SIZE;
-        p.vy = 0;
-      } else if (minOverlap === overlapLeft && p.vx > 0) {
-        p.x = bx - p.width;
-        p.vx = 0;
-        wallContactCount++;
-      } else if (minOverlap === overlapRight && p.vx < 0) {
-        p.x = bx + BLOCK_SIZE;
-        p.vx = 0;
-        wallContactCount++;
+        if (b.type === C.BLOCK_ICE) {
+          p.onIce = true;
+          continue;
+        }
+        if (b.type === C.BLOCK_JUMP && p.vy > 0) {
+          p.vy = -18;
+          continue;
+        }
+        if (b.type === C.BLOCK_SPIKE) {
+          if (p.invincible <= 0) {
+            p.hp -= 1;
+            p.invincible = 10;
+          }
+          continue;
+        }
+        if (b.type === C.BLOCK_WIND_RIGHT) { p.windX = 0.8; continue; }
+        if (b.type === C.BLOCK_WIND_LEFT) { p.windX = -0.8; continue; }
+        if (b.type === C.BLOCK_WIND_UP) { p.windY = -0.5; continue; }
+        if (b.type === C.BLOCK_DARKNESS) { p.inDarkness = true; continue; }
+        if (b.type === C.BLOCK_HEAL) {
+          p.onHeal = true;
+          if (p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + 0.2);
+          continue;
+        }
+        if (b.type === C.BLOCK_COLLAPSE) {
+          // 崩落ブロック：乗るとタイマー開始
+          if (!b.collapseTimer) b.collapseTimer = 120; // 2秒
+          continue;
+        }
+        if (b.type !== C.BLOCK_WALL) continue;
+        
+        const bx = b.c * BLOCK_SIZE;
+        const by = b.r * BLOCK_SIZE;
+        
+        const overlapLeft = (p.x + p.width) - bx;
+        const overlapRight = (bx + BLOCK_SIZE) - p.x;
+        const overlapTop = (p.y + p.height) - by;
+        const overlapBottom = (by + BLOCK_SIZE) - p.y;
+        
+        const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
+        
+        // 接地判定の誤検知修正：前フレームで地面より上にいて、現在地面にめり込んでいる場合のみ
+        const wasAbove = prevY + p.height <= by;
+        
+        if (minOverlap === overlapTop && p.vy >= 0 && wasAbove) {
+          p.y = by - p.height;
+          p.vy = 0;
+          p.onGround = true;
+        } else if (minOverlap === overlapBottom && p.vy < 0) {
+          p.y = by + BLOCK_SIZE;
+          p.vy = 0;
+        } else if (minOverlap === overlapLeft && p.vx > 0) {
+          p.x = bx - p.width;
+          p.vx = 0;
+        } else if (minOverlap === overlapRight && p.vx < 0) {
+          p.x = bx + BLOCK_SIZE;
+          p.vx = 0;
+        }
       }
     }
+    
+    prevX = p.x;
+    prevY = p.y;
   }
   
-  // コヨーテタイムの実装：前フレームで接地していた場合、数フレームはジャンプ可能
-  if (!p.onGround && p.coyoteCounter !== undefined) {
-    if (groundContactCount > 0) {
-      p.coyoteCounter = COYOTE_TIME;
-    } else if (p.coyoteCounter > 0) {
-      p.coyoteCounter--;
-    }
-  } else if (p.onGround) {
-    p.coyoteCounter = COYOTE_TIME;
-  }
+  prevPositions.set(p.id, { x: p.x, y: p.y });
 }
 
 function updateHook(p) {
   if (!p.hook.active) return;
-  
-  // フック連続使用の猶予を設ける
-  if (p.hookCooldown !== undefined && p.hookCooldown > 0) {
-    p.hookCooldown--;
-  }
-  
   const sx = p.x + p.width/2;
   const sy = p.y + p.height/2;
   
@@ -121,42 +132,29 @@ function updateHook(p) {
     p.hook.x = sx + Math.cos(rad) * p.hook.len;
     p.hook.y = sy + Math.sin(rad) * p.hook.len;
     
-    if (p.hook.len > HOOK_MAX_LEN) { 
-      p.hook.active = false;
-      p.hookCooldown = HOOK_COOLDOWN;
-      return;
-    }
+    if (p.hook.len > HOOK_MAX_LEN) { p.hook.active = false; return; }
     
-    // フック貫通バグ修正：プレイヤー自身の当たり判定をスキップ
-    const hit = maps.lineBlockIntersect(sx, sy, p.hook.x, p.hook.y);
+    // フック貫通防止：プレイヤーの当たり判定内のブロックは無視
+    const hit = maps.lineBlockIntersectSafe(sx, sy, p.hook.x, p.hook.y, p);
     if (hit) {
-      // プレイヤーから十分な距離があるかチェック
-      const distFromPlayer = Math.sqrt(Math.pow(hit.x - sx, 2) + Math.pow(hit.y - sy, 2));
-      if (distFromPlayer > 40) { // プレイヤーサイズより大きい
-        p.hook.attached = true;
-        p.hook.x = hit.x;
-        p.hook.y = hit.y;
-      }
+      p.hook.attached = true;
+      p.hook.x = hit.x;
+      p.hook.y = hit.y;
     }
     
     if (p.hook.x < 0 || p.hook.x > GAME_WIDTH || p.hook.y < 0 || p.hook.y > GAME_HEIGHT) {
       p.hook.active = false;
-      p.hookCooldown = HOOK_COOLDOWN;
     }
   } else {
     const dx = p.hook.x - sx;
     const dy = p.hook.y - sy;
     const dist = Math.sqrt(dx*dx + dy*dy);
     if (dist > 15) {
-      // フック解除後の慣性暴走を抑止：速度に上限を設ける
-      const pullForce = 0.025;
-      const maxPullVel = 10;
-      p.vx += Math.max(-maxPullVel, Math.min(maxPullVel, dx * pullForce));
-      p.vy += Math.max(-maxPullVel, Math.min(maxPullVel, dy * pullForce));
+      p.vx += dx * 0.025;
+      p.vy += dy * 0.025;
       p.state = 'hooked';
     } else {
       p.hook.active = false;
-      p.hookCooldown = HOOK_COOLDOWN;
       p.state = 'normal';
     }
   }
@@ -205,19 +203,15 @@ function updateHand(p, levers, doors, movables) {
       }
     }
     
-    // 壁（ハンド壁貫通修正：斜めや薄いブロック対策）
-    const hit = maps.lineBlockIntersect(sx, sy, p.hand.x, p.hand.y);
+    // 壁
+    const hit = maps.lineBlockIntersectSafe(sx, sy, p.hand.x, p.hand.y, p);
     if (hit) {
-      // ブロックからの距離チェック（貫通防止）
-      const hitDist = Math.sqrt(Math.pow(hit.x - sx, 2) + Math.pow(hit.y - sy, 2));
-      if (hitDist < HAND_MAX_LEN * 0.95) {
-        p.hand.attached = true;
-        p.hand.x = hit.x;
-        p.hand.y = hit.y;
-        p.hand.targetType = 'wall';
-        p.state = 'hand_mode';
-        return;
-      }
+      p.hand.attached = true;
+      p.hand.x = hit.x;
+      p.hand.y = hit.y;
+      p.hand.targetType = 'wall';
+      p.state = 'hand_mode';
+      return;
     }
     
     if (p.hand.x < 0 || p.hand.x > GAME_WIDTH || p.hand.y < 0 || p.hand.y > GAME_HEIGHT) {
@@ -305,10 +299,66 @@ function updateDoors(doors) {
 function updateBullets(bullets, players, blocks) {
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
+    
+    // ミサイルの誘導
+    if (b.missile && b.target) {
+      const target = players[b.target];
+      if (target && target.zone === 'battle') {
+        const tx = target.x + target.width/2;
+        const ty = target.y + target.height/2;
+        const angle = Math.atan2(ty - b.y, tx - b.x);
+        let currentAngle = Math.atan2(b.vy, b.vx);
+        let diff = angle - currentAngle;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        const turn = Math.max(-C.MISSILE_TURN, Math.min(C.MISSILE_TURN, diff));
+        currentAngle += turn;
+        const speed = Math.sqrt(b.vx*b.vx + b.vy*b.vy);
+        b.vx = Math.cos(currentAngle) * speed;
+        b.vy = Math.sin(currentAngle) * speed;
+      }
+    }
+    
     b.x += b.vx; b.y += b.vy; b.life--;
     
     const hit = maps.lineBlockIntersect(b.x - b.vx, b.y - b.vy, b.x, b.y);
-    if (hit) { bullets.splice(i, 1); continue; }
+    if (hit) {
+      if (b.bounce) {
+        // バウンド弾：反射
+        const bx = hit.block.c * BLOCK_SIZE;
+        const by = hit.block.r * BLOCK_SIZE;
+        const cx = b.x - b.vx;
+        const cy = b.y - b.vy;
+        // どの面に当たったか判定
+        const prevC = Math.floor(cx / BLOCK_SIZE);
+        const prevR = Math.floor(cy / BLOCK_SIZE);
+        const currC = Math.floor(b.x / BLOCK_SIZE);
+        const currR = Math.floor(b.y / BLOCK_SIZE);
+        if (prevC !== currC) b.vx *= -1;
+        if (prevR !== currR) b.vy *= -1;
+        b.bounceCount = (b.bounceCount || 0) + 1;
+        if (b.bounceCount > 3) { bullets.splice(i, 1); continue; }
+      } else {
+        // 爆発処理
+        if (b.explodeRadius > 0) {
+          for (const id in players) {
+            const p = players[id];
+            if (p.id === b.owner || p.zone !== 'battle') continue;
+            const dx = (p.x + p.width/2) - b.x;
+            const dy = (p.y + p.height/2) - b.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < b.explodeRadius) {
+              const dmg = Math.floor(b.damage * (1 - dist / b.explodeRadius));
+              p.hp -= dmg;
+              p.vx += dx / dist * 3;
+              p.vy += dy / dist * 3;
+            }
+          }
+        }
+        bullets.splice(i, 1);
+        continue;
+      }
+    }
     
     for (const id in players) {
       const p = players[id];
@@ -316,20 +366,61 @@ function updateBullets(bullets, players, blocks) {
       const dx = (p.x + p.width/2) - b.x;
       const dy = (p.y + p.height/2) - b.y;
       if (Math.sqrt(dx*dx + dy*dy) < 30) {
-        p.hp -= b.damage || 15;
-        // 被弾ノックバック強化：弾で吹き飛ばし、コンボを狙えるように
-        p.vx += b.vx * (BULLET_KNOCKBACK * 1.5);
-        p.vy += b.vy * (BULLET_KNOCKBACK * 1.5);
-        // 被弾フラグ
-        p.lastHitTime = Date.now();
-        p.lastHitDir = Math.atan2(b.vy, b.vx);
-        bullets.splice(i, 1);
-        break;
+        p.hp -= b.damage;
+        // 被弾ノックバック強化
+        p.vx += b.vx * 0.8;
+        p.vy += b.vy * 0.8;
+        if (!b.pierce) {
+          bullets.splice(i, 1);
+          break;
+        }
       }
     }
     
     if (b.life <= 0 || b.x < 0 || b.x > GAME_WIDTH || b.y < 0 || b.y > GAME_HEIGHT) {
       bullets.splice(i, 1);
+    }
+  }
+}
+
+function updateTraps(traps, players) {
+  for (let i = traps.length - 1; i >= 0; i--) {
+    const t = traps[i];
+    t.life--;
+    if (t.life <= 0) { traps.splice(i, 1); continue; }
+    
+    for (const id in players) {
+      const p = players[id];
+      if (p.id === t.owner || p.zone !== 'battle') continue;
+      const dx = (p.x + p.width/2) - t.x;
+      const dy = (p.y + p.height/2) - t.y;
+      if (Math.sqrt(dx*dx + dy*dy) < t.radius) {
+        p.hp -= t.damage;
+        p.vx += (Math.random() - 0.5) * 4;
+        p.vy -= 3;
+        traps.splice(i, 1);
+        break;
+      }
+    }
+  }
+}
+
+function updateCollapseBlocks(blocks) {
+  for (const b of blocks) {
+    if (b.type === C.BLOCK_COLLAPSE && b.collapseTimer !== undefined) {
+      b.collapseTimer--;
+      if (b.collapseTimer <= 0) {
+        b.type = C.BLOCK_EMPTY;
+        b.respawnTimer = 300; // 5秒後に復活
+      }
+    }
+    if (b.type === C.BLOCK_EMPTY && b.respawnTimer !== undefined) {
+      b.respawnTimer--;
+      if (b.respawnTimer <= 0) {
+        b.type = C.BLOCK_COLLAPSE;
+        delete b.collapseTimer;
+        delete b.respawnTimer;
+      }
     }
   }
 }
@@ -366,6 +457,8 @@ module.exports = {
   updateMovables,
   updateDoors,
   updateBullets,
+  updateTraps,
+  updateCollapseBlocks,
   checkWarpPads,
   checkDeath
 };

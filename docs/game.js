@@ -11,8 +11,6 @@ function resizeCanvas() {
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
-// 定数の短縮参照
-const C = CONSTANTS;
 
 // グローバルカメラ（他モジュールから参照用）
 window.cameraX = 0;

@@ -708,6 +708,8 @@ const Renderer = {
   },
   
   drawHandMarker(p, levers, movables, blocks) {
+    // state受信前の初回フレームではプレイヤーがまだ存在しない。
+    if (!p) return;
     // ハンド掴み可能マーカー
     const ctx = this.ctx;
     const mx = p.mouseX - this.cameraX;
@@ -731,7 +733,7 @@ const Renderer = {
   },
   
   drawChargeGauge(p) {
-    if (!p.charging || p.chargeLevel <= 0) return;
+    if (!p || !p.charging || p.chargeLevel <= 0) return;
     const ctx = this.ctx;
     const x = this.canvas.width / 2 - 50;
     const y = this.canvas.height - 60;

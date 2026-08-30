@@ -11,9 +11,7 @@ const WEAPONS = {
     spread: 0.05,
     pierce: false,
     bounce: false,
-    chargeable: true, // チャージ可能に
-    chargeMaxDamage: 25, // チャージ時最大ダメージ
-    chargeMaxSpeed: 20,  // チャージ時最大速度
+    chargeable: false,
     icon: '🍝'
   },
   [C.WEAPON_MACARONI_LAUNCHER]: {
@@ -65,7 +63,21 @@ const WEAPONS = {
     bounce: false,
     chargeable: false,
     range: 80,
+    whip: true,
     icon: '〰️'
+  },
+  [C.WEAPON_MISSILE]: {
+    name: 'ミサイル',
+    description: 'マウス追従する誘導弾',
+    damage: 35,
+    speed: 8,
+    cooldown: 60,
+    spread: 0,
+    pierce: false,
+    bounce: false,
+    chargeable: false,
+    missile: true,
+    icon: '🚀'
   }
 };
 
@@ -96,6 +108,22 @@ const SUB_WEAPONS = {
     duration: 180,
     speedMult: 1.5,
     icon: '🌶️'
+  },
+  [C.SUB_SHIELD]: {
+    name: 'パルメザンシールド',
+    description: '2秒間無敵バリア',
+    cooldown: 400,
+    duration: 120,
+    icon: '🛡️'
+  },
+  [C.SUB_TRAP]: {
+    name: '粘着パスタ',
+    description: '敵を足止めするトラップ',
+    cooldown: 300,
+    damage: 20,
+    radius: 30,
+    duration: 600,
+    icon: '🕸️'
   }
 };
 
@@ -121,50 +149,82 @@ function createSubWeapon(subId) {
   };
 }
 
-// ===== ウェポンスロットシステム =====
-function createWeaponSlots() {
-  return [
-    createWeapon(C.WEAPON_SPAGHETTI_GUN),      // スロット1
-    createWeapon(C.WEAPON_MACARONI_LAUNCHER),  // スロット2
-    createWeapon(C.WEAPON_PENNE_SHOTGUN),      // スロット3
-    createWeapon(C.WEAPON_RAVIOLI_GRENADE)     // スロット4
-  ];
-}
-
-function switchWeapon(weaponSlots, slotIndex) {
-  if (slotIndex < 0 || slotIndex >= weaponSlots.length) return null;
-  return weaponSlots[slotIndex];
-}
-
 // ===== 射撃処理 =====
 function fireWeapon(player, weapon, angle, bullets, timestamp, chargeLevel = 0) {
   if (timestamp - weapon.lastFired < weapon.cooldown) return false;
   weapon.lastFired = timestamp;
   
+  const chargeMult = 1 + (chargeLevel / C.CHARGE_MAX) * 0.5; // 最大1.5倍
   const spread = (Math.random() - 0.5) * weapon.spread * 2;
   const finalAngle = angle + spread;
   
-  // チャージショット処理
-  let damage = weapon.damage;
-  let speed = weapon.speed;
-  if (weapon.chargeable && chargeLevel > 0) {
-    const chargeRatio = Math.min(1, chargeLevel / 60); // 最大60フレーム
-    damage = weapon.damage + (weapon.chargeMaxDamage - weapon.damage) * chargeRatio;
-    speed = weapon.speed + (weapon.chargeMaxSpeed - weapon.speed) * chargeRatio;
+  // 鞭の近距離判定
+  if (weapon.whip) {
+    for (const id in bullets.players) {
+      const p = bullets.players[id];
+      if (p.id === player.id || p.zone !== 'battle') continue;
+      const dx = (p.x + p.width/2) - (player.x + player.width/2);
+      const dy = (p.y + p.height/2) - (player.y + player.height/2);
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < weapon.range) {
+        const dir = Math.abs(Math.atan2(dy, dx) - angle);
+        const normDir = Math.min(dir, Math.PI * 2 - dir);
+        if (normDir < 0.5) {
+          p.hp -= weapon.damage * chargeMult;
+          p.vx += Math.cos(angle) * 3;
+          p.vy += Math.sin(angle) * 3;
+        }
+      }
+    }
+    return true;
+  }
+  
+  // ミサイル
+  if (weapon.missile) {
+    // 最も近い敵をターゲット
+    let closest = null;
+    let closestDist = Infinity;
+    for (const id in bullets.players) {
+      const p = bullets.players[id];
+      if (p.id === player.id || p.zone !== 'battle') continue;
+      const dx = (p.x + p.width/2) - (player.x + player.width/2);
+      const dy = (p.y + p.height/2) - (player.y + player.height/2);
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < closestDist && dist < 800) {
+        closestDist = dist;
+        closest = p.id;
+      }
+    }
+    
+    bullets.bullets.push({
+      x: player.x + player.width/2,
+      y: player.y + player.height/2,
+      vx: Math.cos(finalAngle) * weapon.speed,
+      vy: Math.sin(finalAngle) * weapon.speed,
+      owner: player.id,
+      life: C.BULLET_LIFE,
+      damage: weapon.damage * chargeMult,
+      color: player.color,
+      pierce: weapon.pierce,
+      bounce: weapon.bounce,
+      explodeRadius: weapon.explodeRadius || 0,
+      missile: true,
+      target: closest
+    });
+    return true;
   }
   
   if (weapon.pellets) {
-    // ショットガン：複数弾
     for (let i = 0; i < weapon.pellets; i++) {
       const pelletSpread = (Math.random() - 0.5) * 0.3;
-      bullets.push({
+      bullets.bullets.push({
         x: player.x + player.width/2,
         y: player.y + player.height/2,
-        vx: Math.cos(finalAngle + pelletSpread) * speed,
-        vy: Math.sin(finalAngle + pelletSpread) * speed,
+        vx: Math.cos(finalAngle + pelletSpread) * weapon.speed,
+        vy: Math.sin(finalAngle + pelletSpread) * weapon.speed,
         owner: player.id,
         life: C.BULLET_LIFE,
-        damage: damage,
+        damage: weapon.damage * chargeMult,
         color: player.color,
         pierce: weapon.pierce,
         bounce: weapon.bounce,
@@ -172,14 +232,14 @@ function fireWeapon(player, weapon, angle, bullets, timestamp, chargeLevel = 0) 
       });
     }
   } else {
-    bullets.push({
+    bullets.bullets.push({
       x: player.x + player.width/2,
       y: player.y + player.height/2,
-      vx: Math.cos(finalAngle) * speed,
-      vy: Math.sin(finalAngle) * speed,
+      vx: Math.cos(finalAngle) * weapon.speed,
+      vy: Math.sin(finalAngle) * weapon.speed,
       owner: player.id,
       life: C.BULLET_LIFE,
-      damage: damage,
+      damage: weapon.damage * chargeMult,
       color: player.color,
       pierce: weapon.pierce,
       bounce: weapon.bounce,
@@ -190,7 +250,7 @@ function fireWeapon(player, weapon, angle, bullets, timestamp, chargeLevel = 0) 
   return true;
 }
 
-function useSubWeapon(player, subWeapon, timestamp) {
+function useSubWeapon(player, subWeapon, timestamp, traps, smokeScreens) {
   if (timestamp - subWeapon.lastUsed < subWeapon.cooldown) return false;
   subWeapon.lastUsed = timestamp;
   
@@ -201,6 +261,28 @@ function useSubWeapon(player, subWeapon, timestamp) {
     player.speedBoost = subWeapon.duration;
     player.speedMult = subWeapon.speedMult;
   }
+  if (subWeapon.duration && subWeapon.id === C.SUB_SHIELD) {
+    player.invincible = subWeapon.duration;
+  }
+  if (subWeapon.damage && subWeapon.id === C.SUB_TRAP) {
+    traps.push({
+      x: player.x + player.width/2,
+      y: player.y + player.height,
+      radius: subWeapon.radius,
+      damage: subWeapon.damage,
+      life: subWeapon.duration,
+      owner: player.id
+    });
+  }
+  if (subWeapon.duration && subWeapon.id === C.SUB_CHEESE_SMOKE) {
+    smokeScreens.push({
+      x: player.x + player.width/2,
+      y: player.y + player.height/2,
+      radius: subWeapon.radius,
+      life: subWeapon.duration,
+      owner: player.id
+    });
+  }
   
   return true;
 }
@@ -210,8 +292,6 @@ module.exports = {
   SUB_WEAPONS,
   createWeapon,
   createSubWeapon,
-  createWeaponSlots,
-  switchWeapon,
   fireWeapon,
   useSubWeapon
 };

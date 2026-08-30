@@ -774,6 +774,13 @@ function drawDevTools() {
   }
 }
 
+// 入力は移動用とアクション用を分離する。
+// アクションはフレーム数ではなく経過時間で発火するため、FPSが変動しても間隔を維持できる。
+const INPUT_INTERVAL_MS = 1000 / 60;
+const ACTION_INTERVAL_MS = 1000 / 10;
+let actionAccumulatorMs = ACTION_INTERVAL_MS;
+let lastInputSentAt = performance.now();
+
 function draw() {
   drawBackground();
   updateCamera();
@@ -827,6 +834,15 @@ function draw() {
 }
 
 setInterval(() => {
+  const now = performance.now();
+  // タブ復帰や一時停止後に大量のアクションが一度に発火しないよう上限を設ける。
+  const elapsedMs = Math.min(now - lastInputSentAt, 250);
+  lastInputSentAt = now;
+  actionAccumulatorMs += elapsedMs;
+
+  const actionDue = actionAccumulatorMs >= ACTION_INTERVAL_MS;
+  if (actionDue) actionAccumulatorMs %= ACTION_INTERVAL_MS;
+
   let left = keys['a'] || keys['arrowleft'];
   let right = keys['d'] || keys['arrowright'];
   
@@ -839,12 +855,14 @@ setInterval(() => {
     left, right,
     up: keys['w'] || keys['arrowup'],
     down: keys['s'] || keys['arrowdown'],
-    hook: keys['s'],
-    pasta: keys['w'],
-    attack: keys[' '],
-    rest: keys['h'],
+    // 攻撃・フック・ハンド・休憩は固定時間間隔でのみ処理する。
+    // 押しっぱなしの場合は ACTION_INTERVAL_MS ごとに1回だけ発火する。
+    hook: actionDue && keys['s'],
+    pasta: actionDue && keys['w'],
+    attack: actionDue && keys[' '],
+    rest: actionDue && keys['h'],
     mouseX, mouseY
   });
-}, 1000 / 60);
+}, INPUT_INTERVAL_MS);
 
 draw();

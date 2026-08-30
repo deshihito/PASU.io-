@@ -7,6 +7,8 @@ const Input = {
   joystickActive: false,
   joystickDX: 0,
   isMobile: false,
+  attackPressed: false,
+  attackPressTime: 0,
   
   init(canvas) {
     this.isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -29,6 +31,15 @@ const Input = {
       const scaleY = canvas.height / rect.height;
       this.mouseX = (e.clientX - rect.left) * scaleX + window.cameraX;
       this.mouseY = (e.clientY - rect.top) * scaleY + window.cameraY;
+    });
+    
+    // マウスダウン/アップ（チャージ用）
+    canvas.addEventListener('mousedown', (e) => {
+      this.attackPressed = true;
+      this.attackPressTime = Date.now();
+    });
+    canvas.addEventListener('mouseup', (e) => {
+      this.attackPressed = false;
     });
     
     // スマホ照準：右半分＆ボタン以外
@@ -124,7 +135,7 @@ const Input = {
       jump: this.keys['w'] || this.keys['arrowup'],
       hook: this.keys['s'],
       pasta: this.keys['w'],
-      attack: this.keys[' '],
+      attack: this.keys[' '] || this.attackPressed,
       rest: this.keys['h'],
       slot1: this.keys['1'],
       slot2: this.keys['2'],

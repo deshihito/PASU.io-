@@ -89,6 +89,7 @@ const UI = {
   
   hideMapSelect() {
     if (this.elements.mapSelect) this.elements.mapSelect.style.display = 'none';
+    if (this.elements.mapList) this.elements.mapList.innerHTML = '';
   },
   
   addKillLog(killer, victim, weapon) {
@@ -132,10 +133,10 @@ const UI = {
     this.lastFrameTime = now;
     
     ctx.fillStyle = 'rgba(0,0,0,0.75)';
-    ctx.fillRect(10, 50, 260, 260);
+    ctx.fillRect(10, 50, 280, 300);
     ctx.strokeStyle = '#34c759';
     ctx.lineWidth = 1;
-    ctx.strokeRect(10, 50, 260, 260);
+    ctx.strokeRect(10, 50, 280, 300);
     
     ctx.fillStyle = '#34c759';
     ctx.font = '12px monospace';
@@ -150,12 +151,15 @@ const UI = {
       ctx.fillText(`GROUND: ${p.onGround}`, 20, 142);
       ctx.fillText(`BUSH: ${p.inBush}`, 20, 160);
       ctx.fillText(`ICE: ${p.onIce}`, 20, 178);
-      ctx.fillText(`BLOCKS: ${blocks.length}`, 20, 196);
-      ctx.fillText(`PLAYERS: ${Object.keys(players).length}`, 20, 214);
-      ctx.fillText(`BULLETS: ${bullets.length}`, 20, 232);
-      ctx.fillText(`CAM: ${Math.round(cameraX)},${Math.round(cameraY)}`, 20, 250);
-      ctx.fillText(`[1]Hitbox [2]Grid [3]ID`, 20, 268);
-      ctx.fillText(`CLICK:place SHIFT+del`, 20, 286);
+      ctx.fillText(`DARK: ${p.inDarkness}`, 20, 196);
+      ctx.fillText(`BLOCKS: ${blocks.length}`, 20, 214);
+      ctx.fillText(`PLAYERS: ${Object.keys(players).length}`, 20, 232);
+      ctx.fillText(`BULLETS: ${bullets.length}`, 20, 250);
+      ctx.fillText(`CAM: ${Math.round(cameraX)},${Math.round(cameraY)}`, 20, 268);
+      ctx.fillText(`[1-9]BlockType`, 20, 286);
+      ctx.fillText(`[1]Hitbox [2]Grid [3]ID`, 20, 304);
+      ctx.fillText(`CLICK:place SHIFT+del`, 20, 322);
+      ctx.fillText(`Ctrl+E:Export Ctrl+I:Import`, 20, 340);
     }
     
     if (this.devShowGrid) {
@@ -174,7 +178,7 @@ const UI = {
       ctx.lineWidth = 2;
       ctx.strokeRect(p.x - cameraX, p.y - cameraY, p.width, p.height);
       ctx.fillStyle = '#ff2d55';
-      ctx.fillText(`MOUSE: ${Math.round(mouseX)},${Math.round(mouseY)}`, 20, 304);
+      ctx.fillText(`MOUSE: ${Math.round(mouseX)},${Math.round(mouseY)}`, 20, 358);
     }
     
     if (this.devShowIds) {

@@ -137,8 +137,8 @@ io.on('connection', (socket) => {
     
     if (p.zone === 'rest') return;
     
-    // 移動はフックのみ。左右入力・ダッシュ・空中ブレーキは受け付けない。
-    p.vx = 0;
+    // 移動はフックのみ。通常状態だけ横速度を止め、フック中の牽引速度は保持する。
+    if (p.state !== 'hooked') p.vx = 0;
     p.airBrake = false;
     
     if (p.state === 'hand_mode' && p.hand.attached) {

@@ -438,21 +438,6 @@ function updateCollapseBlocks(blocks) {
   }
 }
 
-function checkWarpPads(p, warpPads, world) {
-  if (p.zone !== 'battle') return;
-  for (const wp of warpPads) {
-    if (p.x + p.width > wp.x && p.x < wp.x + wp.w &&
-        p.y + p.height > wp.y && p.y < wp.y + wp.h) {
-      const sp = world.spawnPoints[Math.floor(Math.random() * world.spawnPoints.length)];
-      if (world.loadedPotChunks) maps.ensureWorldChunks(world, { warpTarget: { zone: 'battle', y: sp.y } });
-      p.x = sp.x + (Math.random() - 0.5) * 100;
-      p.y = sp.y;
-      p.vx = 0; p.vy = 0;
-      break;
-    }
-  }
-}
-
 function checkDeath(p, world) {
   if (p.y > GAME_HEIGHT + 200 || p.hp <= 0) {
     p.hp = p.maxHp; p.vx = 0; p.vy = 0;
@@ -476,6 +461,5 @@ module.exports = {
   updateBullets,
   updateTraps,
   updateCollapseBlocks,
-  checkWarpPads,
   checkDeath
 };

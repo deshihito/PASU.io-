@@ -17,7 +17,7 @@ const TIME_SCALE = C.TIME_SCALE;
 // 前フレームの位置を保持（接地判定用）
 const prevPositions = new Map();
 
-function resolveBlockCollision(p) {
+function resolveBlockCollision(p, world = null) {
   // 高速移動時の貫通防止：複数回小刻みに移動してチェック
   const steps = Math.max(1, Math.ceil(Math.max(Math.abs(p.vx), Math.abs(p.vy)) / (BLOCK_SIZE * 0.5)));
   const stepVx = ((p.vx + (p.windX || 0)) * TIME_SCALE) / steps;
@@ -47,7 +47,7 @@ function resolveBlockCollision(p) {
     
     for (let c = c1; c <= c2; c++) {
       for (let r = r1; r <= r2; r++) {
-        const b = maps.blockAt(c, r);
+        const b = maps.blockAt(c, r, world);
         if (!b) continue;
         
         if (b.type === C.BLOCK_BUSH) {
@@ -123,13 +123,22 @@ function resolveBlockCollision(p) {
 }
 
 function releaseHook(p) {
+  const sx = p.x + p.width / 2;
+  const sy = p.y + p.height / 2;
+  const wasAttached = p.hook.active && p.hook.attached;
+  const dx = p.hook.x - sx;
+  const dy = p.hook.y - sy;
+  const nearHookPoint = Math.sqrt(dx * dx + dy * dy) <= C.HOOK_JUMP_DISTANCE;
   p.hook.active = false;
   p.hook.attached = false;
   p.hook.len = 0;
   if (p.state === 'hooked') p.state = 'normal';
+  if (wasAttached && nearHookPoint && !p.onGround) {
+    p.hookJumpTimer = C.HOOK_JUMP_WINDOW;
+  }
 }
 
-function updateHook(p) {
+function updateHook(p, world = null) {
   if (!p.hook.active) return;
   const sx = p.x + p.width/2;
   const sy = p.y + p.height/2;
@@ -143,7 +152,7 @@ function updateHook(p) {
     if (p.hook.len > HOOK_MAX_LEN) { releaseHook(p); return; }
     
     // フック貫通防止：プレイヤーの当たり判定内のブロックは無視
-    const hit = maps.lineBlockIntersectSafe(sx, sy, p.hook.x, p.hook.y, p);
+    const hit = maps.lineBlockIntersectSafe(sx, sy, p.hook.x, p.hook.y, p, world);
     if (hit) {
       p.hook.attached = true;
       p.hook.x = hit.x;
@@ -179,7 +188,7 @@ function releaseHand(p) {
   p.vy = 0;
 }
 
-function updateHand(p, levers, doors, movables) {
+function updateHand(p, levers, doors, movables, world = null) {
   if (!p.hand.active) return;
   const sx = p.x + p.width/2;
   const sy = p.y + p.height/2;
@@ -260,7 +269,7 @@ function updateHand(p, levers, doors, movables) {
   }
 }
 
-function updateMovables(movables, players) {
+function updateMovables(movables, players, world = null) {
   for (const mv of movables) {
     if (mv.heldBy) {
       const holder = players[mv.heldBy];
@@ -278,7 +287,7 @@ function updateMovables(movables, players) {
       
       for (let c = c1; c <= c2; c++) {
         for (let r = r1; r <= r2; r++) {
-          const b = maps.blockAt(c, r);
+          const b = maps.blockAt(c, r, world);
           if (b && b.type === C.BLOCK_WALL) {
             const by = b.r * BLOCK_SIZE;
             if (mv.vy > 0 && mv.y + mv.h > by && mv.y + mv.h - mv.vy <= by) {
@@ -429,12 +438,12 @@ function updateCollapseBlocks(blocks) {
   }
 }
 
-function checkWarpPads(p, warpPads, maps) {
+function checkWarpPads(p, warpPads, world) {
   if (p.zone !== 'battle') return;
   for (const wp of warpPads) {
     if (p.x + p.width > wp.x && p.x < wp.x + wp.w &&
         p.y + p.height > wp.y && p.y < wp.y + wp.h) {
-      const sp = maps.spawnPoints[Math.floor(Math.random() * maps.spawnPoints.length)];
+      const sp = world.spawnPoints[Math.floor(Math.random() * world.spawnPoints.length)];
       p.x = sp.x + (Math.random() - 0.5) * 100;
       p.y = sp.y;
       p.vx = 0; p.vy = 0;
@@ -443,12 +452,12 @@ function checkWarpPads(p, warpPads, maps) {
   }
 }
 
-function checkDeath(p, maps) {
+function checkDeath(p, world) {
   if (p.y > GAME_HEIGHT + 200 || p.hp <= 0) {
     p.hp = p.maxHp; p.vx = 0; p.vy = 0;
     p.hook.active = false; p.hand.active = false; p.state = 'normal';
     if (p.zone === 'battle') {
-      const sp = maps.spawnPoints[Math.floor(Math.random() * maps.spawnPoints.length)];
+      const sp = world.spawnPoints[Math.floor(Math.random() * world.spawnPoints.length)];
       p.x = sp.x; p.y = sp.y;
     }
   }

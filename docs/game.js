@@ -46,6 +46,7 @@ let returningTimer = 0;
 let lastBulletCount = 0;
 let lastMyState = null;
 let comboData = null;
+let hasSelectedSpawn = false;
 
 // マップエディタ（devMode時）
 let editorBlockType = 1;
@@ -281,7 +282,14 @@ socket.on('state', (data) => {
     setTimeout(() => { if (comboData === data.combo) comboData = null; }, 2000);
   }
   
-  UI.hideMapSelect();
+  // 初回だけマップとスポーン地点を選択する。選択中も状態同期は継続する。
+  if (!hasSelectedSpawn && data.maps?.length) {
+    UI.showMapSelect(data.maps, (mapIndex, spawnIndex) => {
+      hasSelectedSpawn = true;
+      UI.hideMapSelect();
+      socket.emit('selectSpawn', mapIndex, spawnIndex);
+    });
+  }
   
   lastMyState = { ...me };
 });

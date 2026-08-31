@@ -2,7 +2,7 @@
 const socket = io();
 const $ = (id) => document.getElementById(id);
 
-const state = { screen: 'home', meId: null, room: null, map: null, players: [], cameraX: 0, cameraY: 0, zoom: 1, bannerTimer: 0 };
+const state = { screen: 'home', meId: null, room: null, map: null, players: [], cameraX: 0, cameraY: 0, zoom: 1, bannerTimer: 0, lastFallCount: 0 };
 const input = { left: false, right: false, hookHeld: false, aimX: 1100, aimY: 580 };
 const canvas = $('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -45,7 +45,10 @@ function applyWorld(data) {
     $('hookMeter').style.width = me.hook ? `${Math.min(100, (me.hook.len || 0) / 7)}%` : '0%';
     const platform = state.map.platforms.reduce((best, candidate) => candidate.y > me.y && candidate.y < best.y ? candidate : best, state.map.platforms[0]);
     const level = Math.max(0, Math.round((state.map.platforms.length - 1 - (platform?.tier || 0)) / 4));
-    $('hudLevel').textContent = `LEVEL ${String(level).padStart(2, '0')}`;
+    const chunk = state.map.chunks?.find((candidate) => candidate.index === platform?.chunk);
+    $('hudLevel').textContent = chunk ? `${chunk.name} / D${String(chunk.difficulty).padStart(2, '0')}` : `LEVEL ${String(level).padStart(2, '0')}`;
+    if ((me.fallCount || 0) > state.lastFallCount) showBanner('DROP', 700);
+    state.lastFallCount = me.fallCount || 0;
   }
   renderCrew();
   if (state.room?.started && state.screen !== 'game') setScreen('game');
@@ -103,8 +106,10 @@ function drawPlatform(platform) {
   ctx.fillStyle = platform.gimmick === 'needle' ? '#754d4c' : platform.gimmick === 'collapse' ? '#6e6658' : '#536464'; ctx.fillRect(pos.x, pos.y, width, height);
   ctx.fillStyle = platform.gimmick === 'needle' ? '#ef476f' : '#f0bf4d'; ctx.fillRect(pos.x, pos.y, width, Math.max(4, 6 * state.zoom));
   ctx.fillStyle = 'rgba(21,33,39,.34)'; for (let x = pos.x + 16; x < pos.x + width; x += 34) ctx.fillRect(x, pos.y + height * .55, 11, 3);
-  if (platform.gimmick === 'needle') { ctx.fillStyle = '#ef476f'; for (let x = pos.x + 10; x < pos.x + width - 10; x += 22) { ctx.beginPath(); ctx.moveTo(x, pos.y); ctx.lineTo(x + 8, pos.y - 13); ctx.lineTo(x + 16, pos.y); ctx.fill(); } }
+  if (platform.gimmick === 'moving') { ctx.fillStyle = '#18a8a8'; ctx.fillRect(pos.x + width / 2 - 15, pos.y - 3, 30, 3); ctx.fillRect(pos.x + width / 2 - 3, pos.y - 10, 6, 10); }
   if (platform.gimmick === 'collapse') { ctx.strokeStyle = '#f26a3d'; ctx.setLineDash([5, 5]); ctx.strokeRect(pos.x + 1, pos.y + 1, width - 2, height - 2); ctx.setLineDash([]); }
+  const platformHazards = (state.map.hazards || []).filter((hazard) => hazard.platformId === platform.id);
+  platformHazards.forEach((hazard) => { ctx.fillStyle = '#ef476f'; const hazardX = pos.x + hazard.offset * state.zoom; for (let x = hazardX; x < hazardX + hazard.w * state.zoom; x += 18 * state.zoom) { ctx.beginPath(); ctx.moveTo(x, pos.y); ctx.lineTo(x + 8 * state.zoom, pos.y - 15 * state.zoom); ctx.lineTo(x + 16 * state.zoom, pos.y); ctx.fill(); } });
   ctx.strokeStyle = 'rgba(21,33,39,.7)'; ctx.strokeRect(pos.x + .5, pos.y + .5, width - 1, height - 1);
 }
 function drawItem(item) { if (item.collected) return; const pos = worldToScreen(item.x, item.y); if (pos.x < -40 || pos.x > innerWidth + 40 || pos.y < -40 || pos.y > innerHeight + 40) return; const size = item.type === 'relic' ? 13 : 10; ctx.save(); ctx.translate(pos.x, pos.y); ctx.rotate(Math.PI / 4); ctx.fillStyle = item.type === 'relic' ? '#f0bf4d' : '#f26a3d'; ctx.fillRect(-size, -size, size * 2, size * 2); ctx.fillStyle = '#f4f2e9'; ctx.fillRect(-size + 4, -size + 4, 4, 4); ctx.restore(); }

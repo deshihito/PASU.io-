@@ -11,6 +11,14 @@ const POT_CHUNK_ROWS = POT_CHUNK_HEIGHT / BLOCK_SIZE;
 const POT_LOAD_RADIUS = 2;
 const loadedPotChunks = new Map();
 
+function createWorld(mapIndex = 0) {
+  const index = Number.isInteger(mapIndex) && MAPS[mapIndex] ? mapIndex : 0;
+  const world = { mapIndex: index, blocks: [], loadedPotChunks: new Map() };
+  if (MAPS[index].infinite) ensureWorldChunks(world);
+  else world.blocks.push(...MAPS[index].blocks.map(block => ({ ...block })));
+  return world;
+}
+
 function addBlock(blocks, c, r, type = C.BLOCK_WALL) {
   blocks.push({ c, r, type });
 }
@@ -99,6 +107,30 @@ function rebuildLoadedBlocks() {
   for (const index of indexes) BLOCKS.push(...loadedPotChunks.get(index));
 }
 
+function ensureWorldChunks(world, players = {}) {
+  if (!MAPS[world.mapIndex].infinite) return;
+  const active = Object.values(players).filter(p => p.zone === 'battle');
+  const positions = active.length ? active : [{ y: 500 }];
+  const wanted = new Set();
+  for (const player of positions) {
+    const center = potChunkIndexForY(player.y);
+    for (let offset = -POT_LOAD_RADIUS; offset <= POT_LOAD_RADIUS; offset++) {
+      const index = center + offset;
+      if (index >= 0) wanted.add(index);
+    }
+  }
+  for (const index of wanted) {
+    if (!world.loadedPotChunks.has(index)) world.loadedPotChunks.set(index, generatePotChunk(index));
+  }
+  for (const index of world.loadedPotChunks.keys()) {
+    if (!wanted.has(index)) world.loadedPotChunks.delete(index);
+  }
+  world.blocks.length = 0;
+  for (const index of [...world.loadedPotChunks.keys()].sort((a, b) => a - b)) {
+    world.blocks.push(...world.loadedPotChunks.get(index));
+  }
+}
+
 function ensurePotChunks(players = {}) {
   if (!MAPS[currentMapIndex].infinite) return;
   const active = Object.values(players).filter(p => p.zone === 'battle');
@@ -136,24 +168,25 @@ function getMapList() {
 
 setMap(0);
 
-function blockAt(cx, cy) {
-  for (const b of BLOCKS) if (b.c === cx && b.r === cy) return b;
+function blockAt(cx, cy, world = null) {
+  const blocks = world?.blocks || BLOCKS;
+  for (const b of blocks) if (b.c === cx && b.r === cy) return b;
   return null;
 }
 
-function lineBlockIntersect(x1, y1, x2, y2) {
+function lineBlockIntersect(x1, y1, x2, y2, world = null) {
   const steps = Math.max(1, Math.ceil(Math.max(Math.abs(x2-x1), Math.abs(y2-y1)) / (BLOCK_SIZE/2)));
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const px = x1 + (x2 - x1) * t;
     const py = y1 + (y2 - y1) * t;
-    const b = blockAt(Math.floor(px/BLOCK_SIZE), Math.floor(py/BLOCK_SIZE));
+    const b = blockAt(Math.floor(px/BLOCK_SIZE), Math.floor(py/BLOCK_SIZE), world);
     if (b && b.type === C.BLOCK_WALL) return { x: px, y: py, block: b };
   }
   return null;
 }
 
-function lineBlockIntersectSafe(x1, y1, x2, y2, player) {
+function lineBlockIntersectSafe(x1, y1, x2, y2, player, world = null) {
   const steps = Math.max(1, Math.ceil(Math.max(Math.abs(x2-x1), Math.abs(y2-y1)) / (BLOCK_SIZE/2)));
   const playerC1 = Math.floor(player.x / BLOCK_SIZE);
   const playerC2 = Math.floor((player.x + player.width) / BLOCK_SIZE);
@@ -165,17 +198,17 @@ function lineBlockIntersectSafe(x1, y1, x2, y2, player) {
     const py = y1 + (y2 - y1) * t;
     const c = Math.floor(px/BLOCK_SIZE); const r = Math.floor(py/BLOCK_SIZE);
     if (c >= playerC1 && c <= playerC2 && r >= playerR1 && r <= playerR2) continue;
-    const b = blockAt(c, r);
+    const b = blockAt(c, r, world);
     if (b && b.type === C.BLOCK_WALL) return { x: px, y: py, block: b };
   }
   return null;
 }
 
-function rectBlocksIntersect(rx, ry, rw, rh) {
+function rectBlocksIntersect(rx, ry, rw, rh, world = null) {
   const c1 = Math.floor(rx / BLOCK_SIZE); const c2 = Math.floor((rx + rw) / BLOCK_SIZE);
   const r1 = Math.floor(ry / BLOCK_SIZE); const r2 = Math.floor((ry + rh) / BLOCK_SIZE);
   for (let c = c1; c <= c2; c++) for (let r = r1; r <= r2; r++) {
-    const b = blockAt(c, r);
+    const b = blockAt(c, r, world);
     if (b && b.type === C.BLOCK_WALL) return true;
   }
   return false;
@@ -183,7 +216,7 @@ function rectBlocksIntersect(rx, ry, rw, rh) {
 
 module.exports = {
   BLOCKS, BLOCK_SIZE, GAME_WIDTH, GAME_HEIGHT, MAP_COLS, MAP_ROWS,
-  MAPS, getMapList, setMap, ensurePotChunks, potChunkIndexForY,
+  MAPS, getMapList, setMap, ensurePotChunks, ensureWorldChunks, createWorld, generatePotChunk, potChunkIndexForY,
   get currentMap() { return MAPS[currentMapIndex]; },
   blockAt, lineBlockIntersect, lineBlockIntersectSafe, rectBlocksIntersect
 };

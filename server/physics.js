@@ -12,6 +12,7 @@ const HAND_MAX_LEN = C.HAND_MAX_LEN;
 const BULLET_SPEED = C.BULLET_SPEED;
 const BULLET_LIFE = C.BULLET_LIFE;
 const RETURN_TIME = C.RETURN_TIME;
+const TIME_SCALE = C.TIME_SCALE;
 
 // 前フレームの位置を保持（接地判定用）
 const prevPositions = new Map();
@@ -19,8 +20,8 @@ const prevPositions = new Map();
 function resolveBlockCollision(p) {
   // 高速移動時の貫通防止：複数回小刻みに移動してチェック
   const steps = Math.max(1, Math.ceil(Math.max(Math.abs(p.vx), Math.abs(p.vy)) / (BLOCK_SIZE * 0.5)));
-  const stepVx = (p.vx + (p.windX || 0)) / steps;
-  const stepVy = (p.vy + (p.windY || 0)) / steps;
+  const stepVx = ((p.vx + (p.windX || 0)) * TIME_SCALE) / steps;
+  const stepVy = ((p.vy + (p.windY || 0)) * TIME_SCALE) / steps;
   
   let prevX = p.x;
   let prevY = p.y;
@@ -134,7 +135,7 @@ function updateHook(p) {
   const sy = p.y + p.height/2;
   
   if (!p.hook.attached) {
-    p.hook.len += HOOK_SPEED;
+    p.hook.len += HOOK_SPEED * TIME_SCALE;
     const rad = p.hook.angle * Math.PI / 180;
     p.hook.x = sx + Math.cos(rad) * p.hook.len;
     p.hook.y = sy + Math.sin(rad) * p.hook.len;
@@ -157,8 +158,8 @@ function updateHook(p) {
     const dy = p.hook.y - sy;
     const dist = Math.sqrt(dx*dx + dy*dy);
     if (dist > 28) {
-      p.vx += dx * 0.025;
-      p.vy += dy * 0.025;
+      p.vx += dx * 0.025 * TIME_SCALE;
+      p.vy += dy * 0.025 * TIME_SCALE;
       p.state = 'hooked';
     } else {
       releaseHook(p);
@@ -184,7 +185,7 @@ function updateHand(p, levers, doors, movables) {
   const sy = p.y + p.height/2;
   
   if (!p.hand.attached) {
-    p.hand.len += HAND_SPEED;
+    p.hand.len += HAND_SPEED * TIME_SCALE;
     const rad = p.hand.angle * Math.PI / 180;
     p.hand.x = sx + Math.cos(rad) * p.hand.len;
     p.hand.y = sy + Math.sin(rad) * p.hand.len;
@@ -239,8 +240,8 @@ function updateHand(p, levers, doors, movables) {
           if (door) door.open = lever.pulled;
           releaseHand(p);
         } else {
-          p.vx += dx * 0.01;
-          p.vy += dy * 0.01;
+          p.vx += dx * 0.01 * TIME_SCALE;
+          p.vy += dy * 0.01 * TIME_SCALE;
         }
       }
     } else if (p.hand.targetType === 'movable') {
@@ -266,9 +267,9 @@ function updateMovables(movables, players) {
       if (!holder || !holder.hand.active || holder.hand.targetId !== mv.id) mv.heldBy = null;
     }
     if (!mv.heldBy) {
-      mv.vy += GRAVITY;
-      mv.x += mv.vx;
-      mv.y += mv.vy;
+      mv.vy += GRAVITY * TIME_SCALE;
+      mv.x += mv.vx * TIME_SCALE;
+      mv.y += mv.vy * TIME_SCALE;
       
       const c1 = Math.floor(mv.x / BLOCK_SIZE);
       const c2 = Math.floor((mv.x + mv.w) / BLOCK_SIZE);
@@ -322,9 +323,9 @@ function updateBullets(bullets, players, blocks) {
       }
     }
     
-    b.x += b.vx; b.y += b.vy; b.life--;
+    b.x += b.vx * TIME_SCALE; b.y += b.vy * TIME_SCALE; b.life--;
     
-    const hit = maps.lineBlockIntersect(b.x - b.vx, b.y - b.vy, b.x, b.y);
+    const hit = maps.lineBlockIntersect(b.x - b.vx * TIME_SCALE, b.y - b.vy * TIME_SCALE, b.x, b.y);
     if (hit) {
       if (b.bounce) {
         // バウンド弾：反射

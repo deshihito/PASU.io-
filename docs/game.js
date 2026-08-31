@@ -47,6 +47,7 @@ let lastBulletCount = 0;
 let lastMyState = null;
 let comboData = null;
 let hasSelectedSpawn = false;
+let currentMapIndex = 0;
 
 // マップエディタ（devMode時）
 let editorBlockType = 1;
@@ -227,6 +228,7 @@ socket.on('state', (data) => {
   traps = data.traps || [];
   smokeScreens = data.smokeScreens || [];
   blockSize = data.blockSize || 40;
+  currentMapIndex = data.currentMapIndex || 0;
   
   const me = players[myId];
   if (!me) return;
@@ -320,7 +322,13 @@ function updateCamera() {
     Renderer.cameraX = me.x - canvas.width/2 + me.width/2;
     Renderer.cameraY = me.y - canvas.height/2 + me.height/2;
     Renderer.cameraX = Math.max(0, Math.min(Renderer.cameraX, 3000 - canvas.width));
-    Renderer.cameraY = Math.max(0, Math.min(Renderer.cameraY, 800 - canvas.height));
+    const infiniteMap = currentMapIndex === 1;
+    if (infiniteMap) {
+      // 壺男風マップは上方向へ無限に続くため、Y=0で固定しない。
+      Renderer.cameraY = Math.min(0, Renderer.cameraY);
+    } else {
+      Renderer.cameraY = Math.max(0, Math.min(Renderer.cameraY, 800 - canvas.height));
+    }
   }
   
   window.cameraX = Renderer.cameraX;

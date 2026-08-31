@@ -444,6 +444,7 @@ function checkWarpPads(p, warpPads, world) {
     if (p.x + p.width > wp.x && p.x < wp.x + wp.w &&
         p.y + p.height > wp.y && p.y < wp.y + wp.h) {
       const sp = world.spawnPoints[Math.floor(Math.random() * world.spawnPoints.length)];
+      if (world.loadedPotChunks) maps.ensureWorldChunks(world, { warpTarget: { zone: 'battle', y: sp.y } });
       p.x = sp.x + (Math.random() - 0.5) * 100;
       p.y = sp.y;
       p.vx = 0; p.vy = 0;
@@ -458,6 +459,7 @@ function checkDeath(p, world) {
     p.hook.active = false; p.hand.active = false; p.state = 'normal';
     if (p.zone === 'battle') {
       const sp = world.spawnPoints[Math.floor(Math.random() * world.spawnPoints.length)];
+      if (world.loadedPotChunks) maps.ensureWorldChunks(world, { respawnTarget: { zone: 'battle', y: sp.y } });
       p.x = sp.x; p.y = sp.y;
     }
   }

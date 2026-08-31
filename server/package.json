@@ -1,7 +1,7 @@
 {
-  "name": "scroll-fighter-server",
+  "name": "pastio-server",
   "version": "1.0.0",
-  "description": "PVP server",
+  "description": "Minimal Socket.IO server for Past.io Party",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

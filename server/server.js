@@ -232,10 +232,9 @@ io.on('connection', (socket) => {
 // ===== ゲームループ =====
 setInterval(() => {
   const now = Date.now();
-  maps.ensurePotChunks(players);
-  
   for (const id in players) {
     const p = players[id];
+    const worldState = WORLD_STATES[p.mapIndex] || WORLD_STATES[0];
     p.invincible = Math.max(0, p.invincible - 1);
     p.hookJumpTimer = Math.max(0, p.hookJumpTimer - 1);
     p.speedBoost = Math.max(0, p.speedBoost - 1);

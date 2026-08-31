@@ -9,3 +9,10 @@
 | `pastio-scrap-texture.png` | ルーム画面の工業テクスチャ | `/manus-storage/pastio-scrap-texture_b1211a27.png` | 酸化コンクリートと塗装金属、傷、黄色塗装、タイル可能 |
 
 素材はWebDevの管理URLを直接参照し、リポジトリへ大容量バイナリを追加しない。
+
+## Player pasta reference
+
+- Source: user-provided `image.png`
+- Web asset: `/manus-storage/pastio-pasta-player_198039e1.png`
+- Usage: player sprite in `docs/game.js`; near-white background is removed in an offscreen Canvas before rendering.
+- Generation: none; this asset came directly from the user's attachment.

@@ -6,6 +6,21 @@ const state = { screen: 'home', meId: null, room: null, map: null, players: [], 
 const input = { left: false, right: false, hookHeld: false, aimX: 1100, aimY: 580 };
 const canvas = $('gameCanvas');
 const ctx = canvas.getContext('2d');
+const pastaSource = new Image();
+const pastaSprite = document.createElement('canvas');
+const pastaSpriteContext = pastaSprite.getContext('2d');
+pastaSource.src = '/manus-storage/pastio-pasta-player_198039e1.png';
+pastaSource.onload = () => {
+  pastaSprite.width = pastaSource.naturalWidth;
+  pastaSprite.height = pastaSource.naturalHeight;
+  pastaSpriteContext.drawImage(pastaSource, 0, 0);
+  const pixels = pastaSpriteContext.getImageData(0, 0, pastaSprite.width, pastaSprite.height);
+  for (let index = 0; index < pixels.data.length; index += 4) {
+    const red = pixels.data[index]; const green = pixels.data[index + 1]; const blue = pixels.data[index + 2];
+    if (red > 238 && green > 238 && blue > 238) pixels.data[index + 3] = 0;
+  }
+  pastaSpriteContext.putImageData(pixels, 0, 0);
+};
 
 function setScreen(name) {
   state.screen = name;
@@ -45,8 +60,7 @@ function applyWorld(data) {
     $('hookMeter').style.width = me.hook ? `${Math.min(100, (me.hook.len || 0) / 7)}%` : '0%';
     const platform = state.map.platforms.reduce((best, candidate) => candidate.y > me.y && candidate.y < best.y ? candidate : best, state.map.platforms[0]);
     const level = Math.max(0, Math.round((state.map.platforms.length - 1 - (platform?.tier || 0)) / 4));
-    const chunk = state.map.chunks?.find((candidate) => candidate.index === platform?.chunk);
-    $('hudLevel').textContent = chunk ? `${chunk.name} / D${String(chunk.difficulty).padStart(2, '0')}` : `LEVEL ${String(level).padStart(2, '0')}`;
+    $('hudLevel').textContent = state.map.arenaLabel ? `ARENA ${state.map.arenaLabel}` : `LEVEL ${String(level).padStart(2, '0')}`;
     if ((me.fallCount || 0) > state.lastFallCount) showBanner('DROP', 700);
     state.lastFallCount = me.fallCount || 0;
   }
@@ -112,6 +126,8 @@ function drawPlatform(platform) {
   platformHazards.forEach((hazard) => { ctx.fillStyle = '#ef476f'; const hazardX = pos.x + hazard.offset * state.zoom; for (let x = hazardX; x < hazardX + hazard.w * state.zoom; x += 18 * state.zoom) { ctx.beginPath(); ctx.moveTo(x, pos.y); ctx.lineTo(x + 8 * state.zoom, pos.y - 15 * state.zoom); ctx.lineTo(x + 16 * state.zoom, pos.y); ctx.fill(); } });
   ctx.strokeStyle = 'rgba(21,33,39,.7)'; ctx.strokeRect(pos.x + .5, pos.y + .5, width - 1, height - 1);
 }
+function drawAnchor(anchor) { const pos = worldToScreen(anchor.x, anchor.y); if (pos.x < -30 || pos.x > innerWidth + 30 || pos.y < -30 || pos.y > innerHeight + 30) return; ctx.save(); ctx.strokeStyle = '#18a8a8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(pos.x, pos.y, 10 * state.zoom, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = '#f4f2e9'; ctx.fillRect(pos.x - 3, pos.y - 3, 6, 6); ctx.restore(); }
+function drawObject(object) { const pos = worldToScreen(object.x, object.y); const width = object.w * state.zoom; const height = object.h * state.zoom; if (pos.x < -width || pos.x > innerWidth + width || pos.y < -height || pos.y > innerHeight + height) return; ctx.save(); ctx.translate(pos.x + width / 2, pos.y + height / 2); ctx.rotate(object.angle || 0); ctx.fillStyle = object.kind === 'drum' ? '#b34e35' : object.kind === 'cargo' ? '#d6a33d' : '#7d8580'; ctx.fillRect(-width / 2, -height / 2, width, height); ctx.strokeStyle = '#152127'; ctx.lineWidth = 3; ctx.strokeRect(-width / 2, -height / 2, width, height); ctx.fillStyle = object.kind === 'crate' ? '#f0bf4d' : '#18a8a8'; ctx.fillRect(-width / 2 + 8, -height / 2 + 8, Math.min(12, width / 4), Math.min(12, height / 4)); ctx.restore(); }
 function drawItem(item) { if (item.collected) return; const pos = worldToScreen(item.x, item.y); if (pos.x < -40 || pos.x > innerWidth + 40 || pos.y < -40 || pos.y > innerHeight + 40) return; const size = item.type === 'relic' ? 13 : 10; ctx.save(); ctx.translate(pos.x, pos.y); ctx.rotate(Math.PI / 4); ctx.fillStyle = item.type === 'relic' ? '#f0bf4d' : '#f26a3d'; ctx.fillRect(-size, -size, size * 2, size * 2); ctx.fillStyle = '#f4f2e9'; ctx.fillRect(-size + 4, -size + 4, 4, 4); ctx.restore(); }
 function center(player) { return { x: player.x + player.w / 2, y: player.y + player.h / 2 }; }
 function drawNoodle(player) {
@@ -123,10 +139,7 @@ function drawPasta(player) {
   const pos = worldToScreen(player.x, player.y); const width = player.w * state.zoom; const height = player.h * state.zoom; if (pos.x > innerWidth + 60 || pos.x + width < -60 || pos.y > innerHeight + 60 || pos.y + height < -60) return;
   ctx.save(); ctx.translate(pos.x, pos.y); if (player.finished) ctx.globalAlpha = .5;
   ctx.fillStyle = 'rgba(21,33,39,.45)'; ctx.beginPath(); ctx.ellipse(width / 2, height + 5, width * .6, 5, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.lineWidth = 3; ctx.strokeStyle = '#9b3d2b'; ctx.fillStyle = '#e5a33c'; ctx.beginPath(); ctx.moveTo(5, height * .42); ctx.bezierCurveTo(width * .18, -5, width * .82, 4, width - 5, height * .4); ctx.bezierCurveTo(width * .82, height + 3, width * .18, height + 4, 5, height * .42); ctx.fill(); ctx.stroke();
-  ctx.strokeStyle = '#f4c65e'; ctx.lineWidth = Math.max(4, 6 * state.zoom); ctx.beginPath(); ctx.moveTo(width * .1, height * .52); ctx.bezierCurveTo(width * .3, height * .2, width * .68, height * .88, width * .92, height * .46); ctx.stroke();
-  ctx.fillStyle = '#d94731'; ctx.beginPath(); ctx.arc(width * .28, height * .48, 4 * state.zoom, 0, Math.PI * 2); ctx.arc(width * .7, height * .48, 4 * state.zoom, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#152127'; ctx.beginPath(); ctx.arc(width * .52, height * .36, 2.4 * state.zoom, 0, Math.PI * 2); ctx.arc(width * .65, height * .36, 2.4 * state.zoom, 0, Math.PI * 2); ctx.fill();
+  if (pastaSprite.width) ctx.drawImage(pastaSprite, 0, 0, width, height); else { ctx.fillStyle = '#e5a33c'; ctx.fillRect(0, 0, width, height); }
   if (player.id === state.meId) { ctx.strokeStyle = '#f0bf4d'; ctx.lineWidth = 2; ctx.strokeRect(-3, -3, width + 6, height + 6); }
   ctx.fillStyle = '#f4f2e9'; ctx.font = `${Math.max(9, 10 * state.zoom)}px IBM Plex Mono, monospace`; ctx.textAlign = 'center'; ctx.fillText(player.name, width / 2, -12 * state.zoom); ctx.restore();
 }
@@ -137,7 +150,7 @@ function frame(now) {
   if (state.screen === 'game' && state.map) {
     state.zoom = Math.max(.72, Math.min(1.16, Math.min(viewWidth / 1060, viewHeight / 650))); const me = state.players.find((player) => player.id === state.meId) || state.players[0];
     if (me) { const targetX = me.x + me.w / 2 - viewWidth / state.zoom * .5; const targetY = me.y + me.h / 2 - viewHeight / state.zoom * .58; state.cameraX += (targetX - state.cameraX) * .15; state.cameraY += (targetY - state.cameraY) * .15; }
-    drawBackground(viewWidth, viewHeight); state.map.platforms.forEach(drawPlatform); state.map.items.forEach(drawItem); drawFinish(); state.players.forEach(drawNoodle); state.players.forEach(drawPasta); if (state.bannerTimer < now) $('gameBanner').classList.add('is-hidden');
+    drawBackground(viewWidth, viewHeight); state.map.platforms.forEach(drawPlatform); (state.map.anchors || []).forEach(drawAnchor); (state.map.objects || []).forEach(drawObject); state.map.items.forEach(drawItem); drawFinish(); state.players.forEach(drawNoodle); state.players.forEach(drawPasta); if (state.bannerTimer < now) $('gameBanner').classList.add('is-hidden');
   }
   requestAnimationFrame(frame);
 }

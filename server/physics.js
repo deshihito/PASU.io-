@@ -121,6 +121,13 @@ function resolveBlockCollision(p) {
   prevPositions.set(p.id, { x: p.x, y: p.y });
 }
 
+function releaseHook(p) {
+  p.hook.active = false;
+  p.hook.attached = false;
+  p.hook.len = 0;
+  if (p.state === 'hooked') p.state = 'normal';
+}
+
 function updateHook(p) {
   if (!p.hook.active) return;
   const sx = p.x + p.width/2;
@@ -132,7 +139,7 @@ function updateHook(p) {
     p.hook.x = sx + Math.cos(rad) * p.hook.len;
     p.hook.y = sy + Math.sin(rad) * p.hook.len;
     
-    if (p.hook.len > HOOK_MAX_LEN) { p.hook.active = false; return; }
+    if (p.hook.len > HOOK_MAX_LEN) { releaseHook(p); return; }
     
     // フック貫通防止：プレイヤーの当たり判定内のブロックは無視
     const hit = maps.lineBlockIntersectSafe(sx, sy, p.hook.x, p.hook.y, p);
@@ -143,19 +150,18 @@ function updateHook(p) {
     }
     
     if (p.hook.x < 0 || p.hook.x > GAME_WIDTH || p.hook.y < 0 || p.hook.y > GAME_HEIGHT) {
-      p.hook.active = false;
+      releaseHook(p);
     }
   } else {
     const dx = p.hook.x - sx;
     const dy = p.hook.y - sy;
     const dist = Math.sqrt(dx*dx + dy*dy);
-    if (dist > 15) {
+    if (dist > 28) {
       p.vx += dx * 0.025;
       p.vy += dy * 0.025;
       p.state = 'hooked';
     } else {
-      p.hook.active = false;
-      p.state = 'normal';
+      releaseHook(p);
     }
   }
 }
@@ -194,6 +200,7 @@ function updateHand(p, levers, doors, movables) {
         p.hand.y = lever.y + lever.h/2;
         p.hand.targetType = 'lever';
         p.hand.targetId = lever.id;
+        p.vx = 0; p.vy = 0;
         p.state = 'hand_mode';
         return;
       }
@@ -210,24 +217,14 @@ function updateHand(p, levers, doors, movables) {
         p.hand.targetType = 'movable';
         p.hand.targetId = mv.id;
         mv.heldBy = p.id;
+        p.vx = 0; p.vy = 0;
         p.state = 'hand_mode';
         return;
       }
     }
     
-    // 壁
-    const hit = maps.lineBlockIntersectSafe(sx, sy, p.hand.x, p.hand.y, p);
-    if (hit) {
-      p.hand.attached = true;
-      p.hand.x = hit.x;
-      p.hand.y = hit.y;
-      p.hand.targetType = 'wall';
-      p.state = 'hand_mode';
-      return;
-    }
-    
     if (p.hand.x < 0 || p.hand.x > GAME_WIDTH || p.hand.y < 0 || p.hand.y > GAME_HEIGHT) {
-      p.hand.active = false; p.state = 'normal';
+      releaseHand(p);
     }
   } else {
     if (p.hand.targetType === 'lever') {
@@ -258,11 +255,6 @@ function updateHand(p, levers, doors, movables) {
         p.hand.x = mv.x + mv.w/2;
         p.hand.y = mv.y + mv.h/2;
       }
-    } else if (p.hand.targetType === 'wall') {
-      const dx = p.hand.x - sx;
-      const dy = p.hand.y - sy;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist < 10) releaseHand(p);
     }
   }
 }
@@ -441,7 +433,7 @@ function checkWarpPads(p, warpPads, maps) {
   for (const wp of warpPads) {
     if (p.x + p.width > wp.x && p.x < wp.x + wp.w &&
         p.y + p.height > wp.y && p.y < wp.y + wp.h) {
-      const sp = maps[0].spawnPoints[Math.floor(Math.random() * maps[0].spawnPoints.length)];
+      const sp = maps.spawnPoints[Math.floor(Math.random() * maps.spawnPoints.length)];
       p.x = sp.x + (Math.random() - 0.5) * 100;
       p.y = sp.y;
       p.vx = 0; p.vy = 0;
@@ -455,7 +447,7 @@ function checkDeath(p, maps) {
     p.hp = p.maxHp; p.vx = 0; p.vy = 0;
     p.hook.active = false; p.hand.active = false; p.state = 'normal';
     if (p.zone === 'battle') {
-      const sp = maps[0].spawnPoints[Math.floor(Math.random() * maps[0].spawnPoints.length)];
+      const sp = maps.spawnPoints[Math.floor(Math.random() * maps.spawnPoints.length)];
       p.x = sp.x; p.y = sp.y;
     }
   }
@@ -464,6 +456,7 @@ function checkDeath(p, maps) {
 module.exports = {
   resolveBlockCollision,
   updateHook,
+  releaseHook,
   updateHand,
   releaseHand,
   updateMovables,

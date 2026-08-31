@@ -42,10 +42,7 @@ const WARP_PADS = [
 ];
 const REST_ZONE = { x: 3200, y: 0, w: 600, h: 800 };
 const SHOP_NPC = { x: 3450, y: 400, w: 40, h: 50 };
-const MAPS = [
-  { name: 'Battlefield', spawnPoints: [{x: 200, y: 500}, {x: 1000, y: 400}, {x: 2000, y: 500}] },
-  { name: 'Sky Arena', spawnPoints: [{x: 300, y: 300}, {x: 1500, y: 200}, {x: 2500, y: 300}] }
-];
+const MAPS = maps.getMapList();
 
 const players = {};
 const bullets = [];
@@ -195,25 +192,15 @@ io.on('connection', (socket) => {
       p.vy = -12; p.onGround = false; p.coyoteTime = 0;
     }
     
-    // S: フックトグル（クールタイムあり）
-    if (data.hook) {
-      if (p.hook.active) { 
-        p.hook.active = false; 
-        p.state = 'normal';
-        // 入力バッファ：フック解除後に攻撃
-        if (p.bufferedAttack) {
-          const w = getPlayerWeapon(p);
-          const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
-          weapons.fireWeapon(p, w, angle, { bullets, players }, now);
-          p.bufferedAttack = false;
-        }
-      }
-      else if (p.state !== 'hand_mode' && p.hookCooldown <= 0) {
-        const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
-        p.hook.active = true; p.hook.attached = false; p.hook.len = 0;
-        p.hook.angle = angle * 180 / Math.PI;
-        p.hookCooldown = C.HOOK_COOLDOWN;
-      }
+    // マウス／S長押し：押している間だけフックを維持する。
+    if (!data.hook && p.hook.active) {
+      physics.releaseHook(p);
+      p.bufferedAttack = false;
+    } else if (data.hook && !p.hook.active && p.state !== 'hand_mode' && p.hookCooldown <= 0) {
+      const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
+      p.hook.active = true; p.hook.attached = false; p.hook.len = 0;
+      p.hook.angle = angle * 180 / Math.PI;
+      p.hookCooldown = C.HOOK_COOLDOWN;
     }
     
     // W: ハンド
@@ -280,8 +267,12 @@ io.on('connection', (socket) => {
   socket.on('selectSpawn', (mapIndex, spawnIndex) => {
     const p = players[socket.id];
     if (!p) return;
+    const selectedMap = maps.setMap(mapIndex);
+    const safeSpawnIndex = Number.isInteger(spawnIndex) && selectedMap.spawnPoints[spawnIndex]
+      ? spawnIndex : 0;
     p.zone = 'battle'; p.returning = false;
-    const sp = MAPS[mapIndex].spawnPoints[spawnIndex];
+    p.mapIndex = MAPS.findIndex(map => map.name === selectedMap.name);
+    const sp = selectedMap.spawnPoints[safeSpawnIndex];
     p.x = sp.x; p.y = sp.y; p.vx = 0; p.vy = 0;
     p.invincible = C.SPAWN_INVINCIBLE;
   });
@@ -332,7 +323,7 @@ setInterval(() => {
     // 物理
     if (p.state !== 'hand_mode') p.vy += C.GRAVITY;
     physics.resolveBlockCollision(p);
-    physics.checkWarpPads(p, WARP_PADS, MAPS);
+    physics.checkWarpPads(p, WARP_PADS, maps.currentMap);
     
     // コヨーテタイム
     if (p.onGround) p.coyoteTime = 6;
@@ -362,7 +353,7 @@ setInterval(() => {
     
     physics.updateHook(p);
     physics.updateHand(p, LEVERS, DOORS, MOVABLES);
-    physics.checkDeath(p, MAPS);
+    physics.checkDeath(p, maps.currentMap);
   }
   
   physics.updateMovables(MOVABLES, players);
@@ -436,7 +427,7 @@ setInterval(() => {
     players, blocks: maps.BLOCKS, bullets,
     levers: LEVERS, doors: DOORS, movables: MOVABLES,
     warpPads: WARP_PADS, restZone: REST_ZONE,
-    shopNpc: SHOP_NPC, maps: MAPS,
+    shopNpc: SHOP_NPC,     maps: MAPS,
     blockSize: BLOCK_SIZE,
     killLog: globalKillLog.slice(0, 5),
     traps: traps.map(t => ({ x: t.x, y: t.y, radius: t.radius, life: t.life })),

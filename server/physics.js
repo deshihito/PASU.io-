@@ -160,6 +160,18 @@ function updateHook(p) {
   }
 }
 
+function releaseHand(p) {
+  p.hand.active = false;
+  p.hand.attached = false;
+  p.hand.targetType = null;
+  p.hand.targetId = null;
+  p.hand.len = 0;
+  p.state = 'normal';
+  // ハンド中に加わった牽引速度を次のフレームへ持ち越さない。
+  p.vx = 0;
+  p.vy = 0;
+}
+
 function updateHand(p, levers, doors, movables) {
   if (!p.hand.active) return;
   const sx = p.x + p.width/2;
@@ -171,7 +183,7 @@ function updateHand(p, levers, doors, movables) {
     p.hand.x = sx + Math.cos(rad) * p.hand.len;
     p.hand.y = sy + Math.sin(rad) * p.hand.len;
     
-    if (p.hand.len > HAND_MAX_LEN) { p.hand.active = false; p.state = 'normal'; return; }
+    if (p.hand.len > HAND_MAX_LEN) { releaseHand(p); return; }
     
     // レバー
     for (const lever of levers) {
@@ -228,8 +240,7 @@ function updateHand(p, levers, doors, movables) {
           lever.pulled = !lever.pulled;
           const door = doors.find(d => d.id === lever.targetDoor);
           if (door) door.open = lever.pulled;
-          p.hand.active = false;
-          p.state = 'normal';
+          releaseHand(p);
         } else {
           p.vx += dx * 0.01;
           p.vy += dy * 0.01;
@@ -251,7 +262,7 @@ function updateHand(p, levers, doors, movables) {
       const dx = p.hand.x - sx;
       const dy = p.hand.y - sy;
       const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist < 10) { p.hand.active = false; p.state = 'normal'; }
+      if (dist < 10) releaseHand(p);
     }
   }
 }
@@ -454,6 +465,7 @@ module.exports = {
   resolveBlockCollision,
   updateHook,
   updateHand,
+  releaseHand,
   updateMovables,
   updateDoors,
   updateBullets,

@@ -167,7 +167,7 @@ io.on('connection', (socket) => {
       if (data.pasta) {
         const mv = MOVABLES.find(m => m.id === p.hand.targetId);
         if (mv) mv.heldBy = null;
-        p.hand.active = false; p.state = 'normal';
+        physics.releaseHand(p);
       }
       // 帰還中・休憩所以外では攻撃不可
       if (data.attack && p.x < REST_ZONE.x && !p.returning) {
@@ -191,7 +191,7 @@ io.on('connection', (socket) => {
     p.vx *= bushMult;
     
     // コヨーテタイム
-    if ((data.up || data.jump) && (p.onGround || p.coyoteTime > 0)) {
+    if (data.jump && (p.onGround || p.coyoteTime > 0)) {
       p.vy = -12; p.onGround = false; p.coyoteTime = 0;
     }
     
@@ -218,7 +218,7 @@ io.on('connection', (socket) => {
     
     // W: ハンド
     if (data.pasta && p.state !== 'hand_mode') {
-      if (p.hand.active && !p.hand.attached) { p.hand.active = false; }
+      if (p.hand.active && !p.hand.attached) { physics.releaseHand(p); }
       else if (!p.hand.active) {
         const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
         p.hand.active = true; p.hand.attached = false; p.hand.len = 0;

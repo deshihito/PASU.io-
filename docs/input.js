@@ -9,6 +9,7 @@ const Input = {
   isMobile: false,
   attackPressed: false,
   attackPressTime: 0,
+  previousActionKeys: {},
   
   init(canvas) {
     this.isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -119,6 +120,13 @@ const Input = {
     btn.addEventListener('touchend', (e) => { e.preventDefault(); this.keys[key] = false; });
   },
   
+  actionPressed(key) {
+    const isDown = Boolean(this.keys[key]);
+    const wasDown = Boolean(this.previousActionKeys[key]);
+    this.previousActionKeys[key] = isDown;
+    return isDown && !wasDown;
+  },
+
   getState() {
     let left = this.keys['a'] || this.keys['arrowleft'];
     let right = this.keys['d'] || this.keys['arrowright'];
@@ -130,11 +138,13 @@ const Input = {
     
     return {
       left, right,
-      up: this.keys['w'] || this.keys['arrowup'],
-      down: this.keys['s'] || this.keys['arrowdown'],
-      jump: this.keys['w'] || this.keys['arrowup'],
-      hook: this.keys['s'],
-      pasta: this.keys['w'],
+      // 移動・ジャンプとアクションのキーを分離する。
+      // W はハンド、S はフック専用。ジャンプ／上下移動は矢印キーのみ。
+      up: this.keys['arrowup'],
+      down: this.keys['arrowdown'],
+      jump: this.actionPressed('arrowup'),
+      hook: this.actionPressed('s'),
+      pasta: this.actionPressed('w'),
       attack: this.keys[' '] || this.attackPressed,
       rest: this.keys['h'],
       slot1: this.keys['1'],

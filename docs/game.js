@@ -35,7 +35,6 @@ let bullets = [];
 let levers = [];
 let doors = [];
 let movables = [];
-let warpPads = [];
 let restZone = {};
 let shopNpc = {};
 let traps = [];
@@ -222,7 +221,6 @@ socket.on('state', (data) => {
   levers = data.levers;
   doors = data.doors;
   movables = data.movables;
-  warpPads = data.warpPads;
   restZone = data.restZone;
   shopNpc = data.shopNpc;
   traps = data.traps || [];
@@ -235,11 +233,6 @@ socket.on('state', (data) => {
   
   UI.updateHUD(me);
   returningTimer = me.returnTimer || 0;
-  
-  // 帰還完了時
-  if (me.zone === 'rest' && lastMyState?.zone === 'battle') {
-    Audio.warp();
-  }
   
   // 被弾検知
   if (lastMyState && me.hp < lastMyState.hp) {
@@ -355,7 +348,6 @@ function gameLoop() {
   Renderer.drawDoors(doors);
   Renderer.drawLevers(levers);
   Renderer.drawMovables(movables);
-  Renderer.drawWarpPads(warpPads);
   Renderer.drawTraps(traps);
   Renderer.drawSmokeScreens(smokeScreens);
   Renderer.drawRestZone(restZone, shopNpc);

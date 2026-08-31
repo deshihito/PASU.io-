@@ -9,6 +9,8 @@ const CONSTANTS = {
   // プレイヤー
   PLAYER_W: 50,
   PLAYER_H: 36,
+  // ゲーム全体の時間倍率。移動・物理・飛翔体を同じ比率で減速する。
+  TIME_SCALE: 0.55,
   GRAVITY: 0.6,
   
   // フック

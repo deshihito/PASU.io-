@@ -9,6 +9,7 @@ const Input = {
   isMobile: false,
   attackPressed: false,
   attackPressTime: 0,
+  hookPressed: false,
   previousActionKeys: {},
   
   init(canvas) {
@@ -34,13 +35,21 @@ const Input = {
       this.mouseY = (e.clientY - rect.top) * scaleY + window.cameraY;
     });
     
-    // マウスダウン/アップ（チャージ用）
+    // マウス長押し：押している間だけフックを維持する。
     canvas.addEventListener('mousedown', (e) => {
-      this.attackPressed = true;
+      if (e.button !== 0) return;
+      this.hookPressed = true;
       this.attackPressTime = Date.now();
     });
     canvas.addEventListener('mouseup', (e) => {
-      this.attackPressed = false;
+      if (e.button !== 0) return;
+      this.hookPressed = false;
+    });
+    window.addEventListener('mouseup', () => {
+      this.hookPressed = false;
+    });
+    canvas.addEventListener('mouseleave', () => {
+      this.hookPressed = false;
     });
     
     // スマホ照準：右半分＆ボタン以外
@@ -118,6 +127,7 @@ const Input = {
     if (!btn) return;
     btn.addEventListener('touchstart', (e) => { e.preventDefault(); this.keys[key] = true; });
     btn.addEventListener('touchend', (e) => { e.preventDefault(); this.keys[key] = false; });
+    btn.addEventListener('touchcancel', (e) => { e.preventDefault(); this.keys[key] = false; });
   },
   
   actionPressed(key) {
@@ -143,17 +153,17 @@ const Input = {
       up: this.keys['arrowup'],
       down: this.keys['arrowdown'],
       jump: this.actionPressed('arrowup'),
-      hook: this.actionPressed('s'),
+      hook: this.hookPressed || Boolean(this.keys['s']),
       pasta: this.actionPressed('w'),
       attack: this.keys[' '] || this.attackPressed,
-      rest: this.keys['h'],
-      slot1: this.keys['1'],
-      slot2: this.keys['2'],
-      slot3: this.keys['3'],
-      slot4: this.keys['4'],
-      slotPrev: this.keys['q'],
-      slotNext: this.keys['e'],
-      subWeapon: this.keys['f'],
+      rest: this.actionPressed('h'),
+      slot1: this.actionPressed('1'),
+      slot2: this.actionPressed('2'),
+      slot3: this.actionPressed('3'),
+      slot4: this.actionPressed('4'),
+      slotPrev: this.actionPressed('q'),
+      slotNext: this.actionPressed('e'),
+      subWeapon: this.actionPressed('f'),
       mouseX: this.mouseX,
       mouseY: this.mouseY
     };

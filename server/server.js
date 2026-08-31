@@ -77,7 +77,9 @@ function createPlayer(id) {
     chargeLevel: 0,
     charging: false,
     bufferedAttack: false,
-    airBrake: false
+    airBrake: false,
+    hookInputWasDown: false,
+    mapIndex: 0
   };
 }
 
@@ -115,7 +117,10 @@ io.on('connection', (socket) => {
     if (data.mouseY !== undefined) p.mouseY = data.mouseY;
     
     const now = Date.now();
-    const speed = p.speedBoost > 0 ? 1.0 * p.speedMult : 1.0;
+    const hookDown = Boolean(data.hook);
+    const hookPressed = hookDown && !p.hookInputWasDown;
+    p.hookInputWasDown = hookDown;
+    const speed = (p.speedBoost > 0 ? 1.0 * p.speedMult : 1.0) * C.TIME_SCALE;
     
     // 帰還キャンセル
     if (p.returning) {
@@ -137,13 +142,13 @@ io.on('connection', (socket) => {
     // ダッシュ判定
     if (data.left) {
       if (p.lastDashDir === -1 && now - p.lastKeyTime['left'] < 200 && p.dashCooldown <= 0) {
-        p.vx -= 8; p.dashCooldown = 60; p.invincible = 10;
+        p.vx -= 8 * C.TIME_SCALE; p.dashCooldown = 60; p.invincible = 10;
       }
       p.lastDashDir = -1; p.lastKeyTime['left'] = now;
     }
     if (data.right) {
       if (p.lastDashDir === 1 && now - p.lastKeyTime['right'] < 200 && p.dashCooldown <= 0) {
-        p.vx += 8; p.dashCooldown = 60; p.invincible = 10;
+        p.vx += 8 * C.TIME_SCALE; p.dashCooldown = 60; p.invincible = 10;
       }
       p.lastDashDir = 1; p.lastKeyTime['right'] = now;
     }
@@ -189,14 +194,14 @@ io.on('connection', (socket) => {
     
     // コヨーテタイム
     if (data.jump && (p.onGround || p.coyoteTime > 0)) {
-      p.vy = -12; p.onGround = false; p.coyoteTime = 0;
+      p.vy = -12 * C.TIME_SCALE; p.onGround = false; p.coyoteTime = 0;
     }
     
     // マウス／S長押し：押している間だけフックを維持する。
-    if (!data.hook && p.hook.active) {
+    if (!hookDown && p.hook.active) {
       physics.releaseHook(p);
       p.bufferedAttack = false;
-    } else if (data.hook && !p.hook.active && p.state !== 'hand_mode' && p.hookCooldown <= 0) {
+    } else if (hookPressed && !p.hook.active && p.state !== 'hand_mode' && p.hookCooldown <= 0) {
       const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
       p.hook.active = true; p.hook.attached = false; p.hook.len = 0;
       p.hook.angle = angle * 180 / Math.PI;
@@ -271,7 +276,7 @@ io.on('connection', (socket) => {
     const safeSpawnIndex = Number.isInteger(spawnIndex) && selectedMap.spawnPoints[spawnIndex]
       ? spawnIndex : 0;
     p.zone = 'battle'; p.returning = false;
-    p.mapIndex = MAPS.findIndex(map => map.name === selectedMap.name);
+    p.mapIndex = Number.isInteger(mapIndex) && MAPS[mapIndex] ? mapIndex : 0;
     const sp = selectedMap.spawnPoints[safeSpawnIndex];
     p.x = sp.x; p.y = sp.y; p.vx = 0; p.vy = 0;
     p.invincible = C.SPAWN_INVINCIBLE;
@@ -291,6 +296,7 @@ io.on('connection', (socket) => {
 // ===== ゲームループ =====
 setInterval(() => {
   const now = Date.now();
+  maps.ensurePotChunks(players);
   
   for (const id in players) {
     const p = players[id];
@@ -313,7 +319,7 @@ setInterval(() => {
     }
     
     if (p.zone === 'rest') {
-      p.x += p.vx; p.y += p.vy;
+      p.x += p.vx * C.TIME_SCALE; p.y += p.vy * C.TIME_SCALE;
       p.vx *= 0.9; p.vy *= 0.9;
       p.x = Math.max(REST_ZONE.x, Math.min(REST_ZONE.x + REST_ZONE.w - p.width, p.x));
       p.y = Math.max(REST_ZONE.y, Math.min(REST_ZONE.y + REST_ZONE.h - p.height, p.y));
@@ -321,7 +327,7 @@ setInterval(() => {
     }
     
     // 物理
-    if (p.state !== 'hand_mode') p.vy += C.GRAVITY;
+    if (p.state !== 'hand_mode') p.vy += C.GRAVITY * C.TIME_SCALE;
     physics.resolveBlockCollision(p);
     physics.checkWarpPads(p, WARP_PADS, maps.currentMap);
     
@@ -340,7 +346,7 @@ setInterval(() => {
     // 壁・天井制限
     if (p.x < 0) { p.x = 0; p.vx = 0; }
     if (p.x > GAME_WIDTH - p.width) { p.x = GAME_WIDTH - p.width; p.vx = 0; }
-    if (p.y < 0) { p.y = 0; p.vy = 0; }
+    if (p.y < 0 && !maps.currentMap.infinite) { p.y = 0; p.vy = 0; }
     
     // 落下ダメージ
     if (p.vy > 15 && p.onGround) {
@@ -428,6 +434,7 @@ setInterval(() => {
     levers: LEVERS, doors: DOORS, movables: MOVABLES,
     warpPads: WARP_PADS, restZone: REST_ZONE,
     shopNpc: SHOP_NPC,     maps: MAPS,
+    currentMapIndex: MAPS.findIndex(map => map.name === maps.currentMap.name),
     blockSize: BLOCK_SIZE,
     killLog: globalKillLog.slice(0, 5),
     traps: traps.map(t => ({ x: t.x, y: t.y, radius: t.radius, life: t.life })),

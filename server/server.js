@@ -22,19 +22,6 @@ app.get('/', (req, res) => {
 const { BLOCK_SIZE, GAME_WIDTH, GAME_HEIGHT } = maps;
 
 // ===== オブジェクト =====
-const LEVERS = [
-  { id: 'lever1', x: 400, y: 520, w: 30, h: 40, pulled: false, targetDoor: 'door1' },
-  { id: 'lever2', x: 1200, y: 360, w: 30, h: 40, pulled: false, targetDoor: 'door2' }
-];
-const DOORS = [
-  { id: 'door1', x: 800, y: 400, w: 40, h: 120, open: false, openHeight: 0 },
-  { id: 'door2', x: 1800, y: 280, w: 40, h: 120, open: false, openHeight: 0 }
-];
-const MOVABLES = [
-  { id: 'box1', x: 300, y: 500, w: 40, h: 40, vx: 0, vy: 0, heldBy: null },
-  { id: 'box2', x: 900, y: 400, w: 50, h: 50, vx: 0, vy: 0, heldBy: null },
-  { id: 'box3', x: 1600, y: 300, w: 35, h: 60, vx: 0, vy: 0, heldBy: null }
-];
 const WARP_PADS = [
   { x: 500, y: 520, w: 50, h: 10 },
   { x: 1500, y: 520, w: 50, h: 10 },
@@ -43,6 +30,22 @@ const WARP_PADS = [
 const REST_ZONE = { x: 3200, y: 0, w: 600, h: 800 };
 const SHOP_NPC = { x: 3450, y: 400, w: 40, h: 50 };
 const MAPS = maps.getMapList();
+const WORLD_STATES = MAPS.map((map, index) => ({
+  terrain: maps.createWorld(index),
+  levers: index === 0 ? [
+    { id: 'lever1', x: 400, y: 520, w: 30, h: 40, pulled: false, targetDoor: 'door1' },
+    { id: 'lever2', x: 1200, y: 360, w: 30, h: 40, pulled: false, targetDoor: 'door2' }
+  ] : [],
+  doors: index === 0 ? [
+    { id: 'door1', x: 800, y: 400, w: 40, h: 120, open: false, openHeight: 0 },
+    { id: 'door2', x: 1800, y: 280, w: 40, h: 120, open: false, openHeight: 0 }
+  ] : [],
+  movables: index === 0 ? [
+    { id: 'box1', x: 300, y: 500, w: 40, h: 40, vx: 0, vy: 0, heldBy: null },
+    { id: 'box2', x: 900, y: 400, w: 50, h: 50, vx: 0, vy: 0, heldBy: null },
+    { id: 'box3', x: 1600, y: 300, w: 35, h: 60, vx: 0, vy: 0, heldBy: null }
+  ] : []
+}));
 
 const players = {};
 const bullets = [];
@@ -79,6 +82,7 @@ function createPlayer(id) {
     bufferedAttack: false,
     airBrake: false,
     hookInputWasDown: false,
+    hookJumpTimer: 0,
     mapIndex: 0
   };
 }
@@ -113,6 +117,7 @@ io.on('connection', (socket) => {
   socket.on('input', (data) => {
     const p = players[socket.id];
     if (!p) return;
+    const worldState = WORLD_STATES[p.mapIndex] || WORLD_STATES[0];
     if (data.mouseX !== undefined) p.mouseX = data.mouseX;
     if (data.mouseY !== undefined) p.mouseY = data.mouseY;
     
@@ -120,7 +125,6 @@ io.on('connection', (socket) => {
     const hookDown = Boolean(data.hook);
     const hookPressed = hookDown && !p.hookInputWasDown;
     p.hookInputWasDown = hookDown;
-    const speed = (p.speedBoost > 0 ? 1.0 * p.speedMult : 1.0) * C.TIME_SCALE;
     
     // 帰還キャンセル
     if (p.returning) {
@@ -131,66 +135,22 @@ io.on('connection', (socket) => {
       return;
     }
     
-    if (p.zone === 'rest') {
-      if (data.left) p.vx -= speed;
-      if (data.right) p.vx += speed;
-      if (data.up) p.vy -= speed;
-      if (data.down) p.vy += speed;
-      return;
-    }
+    if (p.zone === 'rest') return;
     
-    // ダッシュ判定
-    if (data.left) {
-      if (p.lastDashDir === -1 && now - p.lastKeyTime['left'] < 200 && p.dashCooldown <= 0) {
-        p.vx -= 8 * C.TIME_SCALE; p.dashCooldown = 60; p.invincible = 10;
-      }
-      p.lastDashDir = -1; p.lastKeyTime['left'] = now;
-    }
-    if (data.right) {
-      if (p.lastDashDir === 1 && now - p.lastKeyTime['right'] < 200 && p.dashCooldown <= 0) {
-        p.vx += 8 * C.TIME_SCALE; p.dashCooldown = 60; p.invincible = 10;
-      }
-      p.lastDashDir = 1; p.lastKeyTime['right'] = now;
-    }
-    p.dashCooldown = Math.max(0, p.dashCooldown - 1);
-    
-    // 空中ブレーキ
-    if (data.down && !p.onGround && p.state === 'normal') {
-      p.vy *= 0.5;
-      p.vx *= 0.5;
-      p.airBrake = true;
-    } else {
-      p.airBrake = false;
-    }
+    // 移動はフックのみ。左右入力・ダッシュ・空中ブレーキは受け付けない。
+    p.vx = 0;
+    p.airBrake = false;
     
     if (p.state === 'hand_mode' && p.hand.attached) {
       if (data.left) p.hand.moveAngle -= 3;
       if (data.right) p.hand.moveAngle += 3;
       if (data.pasta) {
-        const mv = MOVABLES.find(m => m.id === p.hand.targetId);
+        const mv = worldState.movables.find(m => m.id === p.hand.targetId);
         if (mv) mv.heldBy = null;
         physics.releaseHand(p);
       }
-      // 帰還中・休憩所以外では攻撃不可
-      if (data.attack && p.x < REST_ZONE.x && !p.returning) {
-        const w = getPlayerWeapon(p);
-        const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
-        weapons.fireWeapon(p, w, angle, { bullets, players }, now);
-      }
       return;
     }
-    
-    if (p.state === 'hooked') {
-      if (data.left) p.vx -= speed * 0.3;
-      if (data.right) p.vx += speed * 0.3;
-    } else if (p.state === 'normal') {
-      if (data.left) { p.vx -= speed; p.facing = -1; }
-      if (data.right) { p.vx += speed; p.facing = 1; }
-    }
-    
-    // ブッシュ内移動速度低下
-    const bushMult = p.inBush ? 0.7 : 1;
-    p.vx *= bushMult;
     
     // コヨーテタイム
     if (data.jump && (p.onGround || p.coyoteTime > 0)) {
@@ -200,7 +160,6 @@ io.on('connection', (socket) => {
     // マウス／S長押し：押している間だけフックを維持する。
     if (!hookDown && p.hook.active) {
       physics.releaseHook(p);
-      p.bufferedAttack = false;
     } else if (hookPressed && !p.hook.active && p.state !== 'hand_mode' && p.hookCooldown <= 0) {
       const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
       p.hook.active = true; p.hook.attached = false; p.hook.len = 0;
@@ -216,30 +175,6 @@ io.on('connection', (socket) => {
         p.hand.active = true; p.hand.attached = false; p.hand.len = 0;
         p.hand.angle = angle * 180 / Math.PI;
       }
-    }
-    
-    // スペース: 攻撃（チャージ対応）
-    if (data.attack && p.state === 'normal' && p.x < REST_ZONE.x && !p.returning) {
-      const w = getPlayerWeapon(p);
-      if (w.chargeable) {
-        p.charging = true;
-        p.chargeLevel = Math.min(C.CHARGE_MAX, p.chargeLevel + 1);
-      } else {
-        const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
-        weapons.fireWeapon(p, w, angle, { bullets, players }, now);
-      }
-    } else if (!data.attack && p.charging) {
-      // チャージ射撃
-      const w = getPlayerWeapon(p);
-      const angle = Math.atan2(p.mouseY - (p.y + p.height/2), p.mouseX - (p.x + p.width/2));
-      weapons.fireWeapon(p, w, angle, { bullets, players }, now, p.chargeLevel);
-      p.charging = false;
-      p.chargeLevel = 0;
-    }
-    
-    // フック中の入力バッファ
-    if (data.attack && p.state === 'hooked') {
-      p.bufferedAttack = true;
     }
     
     // Q/E: スロット切り替え
@@ -272,11 +207,12 @@ io.on('connection', (socket) => {
   socket.on('selectSpawn', (mapIndex, spawnIndex) => {
     const p = players[socket.id];
     if (!p) return;
-    const selectedMap = maps.setMap(mapIndex);
+    const safeMapIndex = Number.isInteger(mapIndex) && MAPS[mapIndex] ? mapIndex : 0;
+    const selectedMap = MAPS[safeMapIndex];
     const safeSpawnIndex = Number.isInteger(spawnIndex) && selectedMap.spawnPoints[spawnIndex]
       ? spawnIndex : 0;
     p.zone = 'battle'; p.returning = false;
-    p.mapIndex = Number.isInteger(mapIndex) && MAPS[mapIndex] ? mapIndex : 0;
+    p.mapIndex = safeMapIndex;
     const sp = selectedMap.spawnPoints[safeSpawnIndex];
     p.x = sp.x; p.y = sp.y; p.vx = 0; p.vy = 0;
     p.invincible = C.SPAWN_INVINCIBLE;
@@ -301,6 +237,7 @@ setInterval(() => {
   for (const id in players) {
     const p = players[id];
     p.invincible = Math.max(0, p.invincible - 1);
+    p.hookJumpTimer = Math.max(0, p.hookJumpTimer - 1);
     p.speedBoost = Math.max(0, p.speedBoost - 1);
     p.hookCooldown = Math.max(0, p.hookCooldown - 1);
     if (p.speedBoost <= 0) p.speedMult = 1;
@@ -328,8 +265,8 @@ setInterval(() => {
     
     // 物理
     if (p.state !== 'hand_mode') p.vy += C.GRAVITY * C.TIME_SCALE;
-    physics.resolveBlockCollision(p);
-    physics.checkWarpPads(p, WARP_PADS, maps.currentMap);
+    physics.resolveBlockCollision(p, worldState.terrain);
+    physics.checkWarpPads(p, WARP_PADS, worldState.terrain);
     
     // コヨーテタイム
     if (p.onGround) p.coyoteTime = 6;
@@ -346,7 +283,7 @@ setInterval(() => {
     // 壁・天井制限
     if (p.x < 0) { p.x = 0; p.vx = 0; }
     if (p.x > GAME_WIDTH - p.width) { p.x = GAME_WIDTH - p.width; p.vx = 0; }
-    if (p.y < 0 && !maps.currentMap.infinite) { p.y = 0; p.vy = 0; }
+    if (p.y < 0 && !MAPS[p.mapIndex].infinite) { p.y = 0; p.vy = 0; }
     
     // 落下ダメージ
     if (p.vy > 15 && p.onGround) {
@@ -357,16 +294,21 @@ setInterval(() => {
       }
     }
     
-    physics.updateHook(p);
-    physics.updateHand(p, LEVERS, DOORS, MOVABLES);
-    physics.checkDeath(p, maps.currentMap);
+    physics.updateHook(p, worldState.terrain);
+    physics.updateHand(p, worldState.levers, worldState.doors, worldState.movables, worldState.terrain);
+    physics.checkDeath(p, worldState.terrain);
   }
   
-  physics.updateMovables(MOVABLES, players);
-  physics.updateDoors(DOORS);
-  physics.updateBullets(bullets, players, maps.BLOCKS);
+  for (const worldState of WORLD_STATES) {
+    const worldPlayers = Object.fromEntries(Object.entries(players).filter(([, p]) => p.mapIndex === worldState.terrain.mapIndex));
+    maps.ensureWorldChunks(worldState.terrain, worldPlayers);
+    physics.updateMovables(worldState.movables, worldPlayers, worldState.terrain);
+    physics.updateDoors(worldState.doors);
+    physics.updateCollapseBlocks(worldState.terrain.blocks);
+  }
+  // 射撃を無効化しているため、共有弾配列は毎フレーム空に保つ。
+  bullets.length = 0;
   physics.updateTraps(traps, players);
-  physics.updateCollapseBlocks(maps.BLOCKS);
   
   // キル処理・スコア・連続キル
   for (const id in players) {
@@ -412,7 +354,8 @@ setInterval(() => {
       p.hp = p.maxHp; p.vx = 0; p.vy = 0;
       p.hook.active = false; p.hand.active = false; p.state = 'normal';
       p.invincible = C.SPAWN_INVINCIBLE;
-      const sp = MAPS[0].spawnPoints[Math.floor(Math.random() * MAPS[0].spawnPoints.length)];
+      const respawnMap = MAPS[p.mapIndex] || MAPS[0];
+      const sp = respawnMap.spawnPoints[Math.floor(Math.random() * respawnMap.spawnPoints.length)];
       p.x = sp.x; p.y = sp.y;
     }
   }
@@ -429,17 +372,31 @@ setInterval(() => {
     }
   }
   
-  io.emit('state', {
-    players, blocks: maps.BLOCKS, bullets,
-    levers: LEVERS, doors: DOORS, movables: MOVABLES,
-    warpPads: WARP_PADS, restZone: REST_ZONE,
-    shopNpc: SHOP_NPC,     maps: MAPS,
-    currentMapIndex: MAPS.findIndex(map => map.name === maps.currentMap.name),
-    blockSize: BLOCK_SIZE,
-    killLog: globalKillLog.slice(0, 5),
-    traps: traps.map(t => ({ x: t.x, y: t.y, radius: t.radius, life: t.life })),
-    smokeScreens: rooms.rooms[Object.keys(rooms.rooms)[0]]?.smokeScreens || []
-  });
+  // マップごとに独立した状態だけを各クライアントへ配信する。
+  for (const id in players) {
+    const player = players[id];
+    const worldState = WORLD_STATES[player.mapIndex] || WORLD_STATES[0];
+    const visiblePlayers = Object.fromEntries(
+      Object.entries(players).filter(([, other]) => other.mapIndex === player.mapIndex)
+    );
+    io.to(id).emit('state', {
+      players: visiblePlayers,
+      blocks: worldState.terrain.blocks,
+      bullets: [],
+      levers: worldState.levers,
+      doors: worldState.doors,
+      movables: worldState.movables,
+      warpPads: WARP_PADS,
+      restZone: REST_ZONE,
+      shopNpc: SHOP_NPC,
+      maps: MAPS,
+      currentMapIndex: player.mapIndex,
+      blockSize: BLOCK_SIZE,
+      killLog: globalKillLog.slice(0, 5),
+      traps: traps.map(t => ({ x: t.x, y: t.y, radius: t.radius, life: t.life })),
+      smokeScreens: rooms.rooms[Object.keys(rooms.rooms)[0]]?.smokeScreens || []
+    });
+  }
 }, 1000 / 60);
 
 server.listen(PORT, () => {

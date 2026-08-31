@@ -155,6 +155,7 @@ function fireWeapon(player, weapon, angle, bullets, timestamp, chargeLevel = 0) 
   weapon.lastFired = timestamp;
   
   const chargeMult = 1 + (chargeLevel / C.CHARGE_MAX) * 0.5; // 最大1.5倍
+  const shotSpeed = weapon.speed * C.TIME_SCALE;
   const spread = (Math.random() - 0.5) * weapon.spread * 2;
   const finalAngle = angle + spread;
   
@@ -199,8 +200,8 @@ function fireWeapon(player, weapon, angle, bullets, timestamp, chargeLevel = 0) 
     bullets.bullets.push({
       x: player.x + player.width/2,
       y: player.y + player.height/2,
-      vx: Math.cos(finalAngle) * weapon.speed,
-      vy: Math.sin(finalAngle) * weapon.speed,
+      vx: Math.cos(finalAngle) * shotSpeed,
+      vy: Math.sin(finalAngle) * shotSpeed,
       owner: player.id,
       life: C.BULLET_LIFE,
       damage: weapon.damage * chargeMult,
@@ -220,8 +221,8 @@ function fireWeapon(player, weapon, angle, bullets, timestamp, chargeLevel = 0) 
       bullets.bullets.push({
         x: player.x + player.width/2,
         y: player.y + player.height/2,
-        vx: Math.cos(finalAngle + pelletSpread) * weapon.speed,
-        vy: Math.sin(finalAngle + pelletSpread) * weapon.speed,
+        vx: Math.cos(finalAngle + pelletSpread) * shotSpeed,
+        vy: Math.sin(finalAngle + pelletSpread) * shotSpeed,
         owner: player.id,
         life: C.BULLET_LIFE,
         damage: weapon.damage * chargeMult,
@@ -235,8 +236,8 @@ function fireWeapon(player, weapon, angle, bullets, timestamp, chargeLevel = 0) 
     bullets.bullets.push({
       x: player.x + player.width/2,
       y: player.y + player.height/2,
-      vx: Math.cos(finalAngle) * weapon.speed,
-      vy: Math.sin(finalAngle) * weapon.speed,
+      vx: Math.cos(finalAngle) * shotSpeed,
+      vy: Math.sin(finalAngle) * shotSpeed,
       owner: player.id,
       life: C.BULLET_LIFE,
       damage: weapon.damage * chargeMult,

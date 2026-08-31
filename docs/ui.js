@@ -69,6 +69,11 @@ const UI = {
       t.style.fontSize = '14px';
       d.appendChild(t);
       
+      const description = document.createElement('p');
+      description.textContent = map.description || '';
+      description.style.cssText = 'margin:0 0 6px;color:#aaa;font-size:12px;';
+      d.appendChild(description);
+
       const s = document.createElement('div');
       s.style.display = 'flex';
       s.style.gap = '8px';

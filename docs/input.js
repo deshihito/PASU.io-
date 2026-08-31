@@ -7,8 +7,6 @@ const Input = {
   joystickActive: false,
   joystickDX: 0,
   isMobile: false,
-  attackPressed: false,
-  attackPressTime: 0,
   hookPressed: false,
   previousActionKeys: {},
   
@@ -39,7 +37,6 @@ const Input = {
     canvas.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       this.hookPressed = true;
-      this.attackPressTime = Date.now();
     });
     canvas.addEventListener('mouseup', (e) => {
       if (e.button !== 0) return;
@@ -106,7 +103,6 @@ const Input = {
     // アクションボタン
     this.bindTouchBtn('btnHook', 's');
     this.bindTouchBtn('btnHand', 'w');
-    this.bindTouchBtn('btnAttack', ' ');
     this.bindTouchBtn('btnRest', 'h');
   },
   
@@ -155,7 +151,6 @@ const Input = {
       jump: this.actionPressed('arrowup'),
       hook: this.hookPressed || Boolean(this.keys['s']),
       pasta: this.actionPressed('w'),
-      attack: this.keys[' '] || this.attackPressed,
       rest: this.actionPressed('h'),
       slot1: this.actionPressed('1'),
       slot2: this.actionPressed('2'),

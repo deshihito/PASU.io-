@@ -3,24 +3,9 @@ const socket = io();
 const $ = (id) => document.getElementById(id);
 
 const state = { screen: 'home', meId: null, room: null, map: null, players: [], cameraX: 0, cameraY: 0, zoom: 1, bannerTimer: 0, lastFallCount: 0 };
-const input = { left: false, right: false, hookHeld: false, aimX: 1100, aimY: 580 };
+const input = { hookHeld: false, aimX: 1100, aimY: 580 };
 const canvas = $('gameCanvas');
 const ctx = canvas.getContext('2d');
-const pastaSource = new Image();
-const pastaSprite = document.createElement('canvas');
-const pastaSpriteContext = pastaSprite.getContext('2d');
-pastaSource.src = '/manus-storage/pastio-pasta-player_198039e1.png';
-pastaSource.onload = () => {
-  pastaSprite.width = pastaSource.naturalWidth;
-  pastaSprite.height = pastaSource.naturalHeight;
-  pastaSpriteContext.drawImage(pastaSource, 0, 0);
-  const pixels = pastaSpriteContext.getImageData(0, 0, pastaSprite.width, pastaSprite.height);
-  for (let index = 0; index < pixels.data.length; index += 4) {
-    const red = pixels.data[index]; const green = pixels.data[index + 1]; const blue = pixels.data[index + 2];
-    if (red > 238 && green > 238 && blue > 238) pixels.data[index + 3] = 0;
-  }
-  pastaSpriteContext.putImageData(pixels, 0, 0);
-};
 
 function setScreen(name) {
   state.screen = name;
@@ -57,6 +42,7 @@ function applyWorld(data) {
   const me = state.players.find((player) => player.id === state.meId);
   if (me) {
     $('hudScore').textContent = String(me.score || 0).padStart(2, '0');
+    $('hudHp').textContent = `HP ${String(Math.max(0, me.hp ?? 100)).padStart(3, '0')}`;
     $('hookMeter').style.width = me.hook ? `${Math.min(100, (me.hook.len || 0) / 7)}%` : '0%';
     const platform = state.map.platforms.reduce((best, candidate) => candidate.y > me.y && candidate.y < best.y ? candidate : best, state.map.platforms[0]);
     const level = Math.max(0, Math.round((state.map.platforms.length - 1 - (platform?.tier || 0)) / 4));
@@ -88,7 +74,8 @@ socket.on('roomJoined', (data) => { state.meId = socket.id; applyWorld(data); $(
 socket.on('state', (data) => { applyWorld(data); if (state.screen === 'room') renderRoom(); });
 socket.on('roomError', () => setStatus(state.screen === 'home' ? 'homeStatus' : 'roomStatus', 'ROOM'));
 socket.on('itemCollected', ({ playerId, score }) => { if (playerId === state.meId) { $('hudScore').textContent = String(score || 0).padStart(2, '0'); showBanner('+ SCRAP', 850); } });
-socket.on('finish', ({ playerId }) => { if (playerId === state.meId) showBanner('FINISH', 1700); });
+  socket.on('finish', ({ playerId }) => { if (playerId === state.meId) showBanner('FINISH', 1700); });
+  socket.on('playerHit', ({ playerId, damage }) => { if (playerId === state.meId) showBanner(`HIT -${damage}`, 700); });
 
 function resizeCanvas() { const dpr = Math.min(window.devicePixelRatio || 1, 2); canvas.width = Math.floor(window.innerWidth * dpr); canvas.height = Math.floor(window.innerHeight * dpr); canvas.style.width = `${window.innerWidth}px`; canvas.style.height = `${window.innerHeight}px`; }
 window.addEventListener('resize', resizeCanvas); resizeCanvas();
@@ -97,11 +84,10 @@ canvas.addEventListener('pointermove', updateAim);
 canvas.addEventListener('pointerdown', (event) => { if (event.button !== 0 || state.screen !== 'game') return; event.preventDefault(); canvas.setPointerCapture?.(event.pointerId); updateAim(event); input.hookHeld = true; });
 window.addEventListener('pointerup', () => { input.hookHeld = false; });
 window.addEventListener('pointercancel', () => { input.hookHeld = false; });
-window.addEventListener('blur', () => { input.hookHeld = false; input.left = false; input.right = false; });
+window.addEventListener('blur', () => { input.hookHeld = false; });
 canvas.addEventListener('contextmenu', (event) => event.preventDefault());
-window.addEventListener('keydown', (event) => { if (event.code === 'KeyA') { input.left = true; event.preventDefault(); } if (event.code === 'KeyD') { input.right = true; event.preventDefault(); } if (event.code === 'Escape' && state.screen === 'game') leaveRoom(); });
-window.addEventListener('keyup', (event) => { if (event.code === 'KeyA') input.left = false; if (event.code === 'KeyD') input.right = false; });
-setInterval(() => socket.emit('input', { move: Number(input.right) - Number(input.left), hook: input.hookHeld, aimX: input.aimX, aimY: input.aimY }), 50);
+window.addEventListener('keydown', (event) => { if (event.code === 'Escape' && state.screen === 'game') leaveRoom(); });
+setInterval(() => socket.emit('input', { hook: input.hookHeld, aimX: input.aimX, aimY: input.aimY }), 50);
 
 function worldToScreen(x, y) { return { x: (x - state.cameraX) * state.zoom, y: (y - state.cameraY) * state.zoom }; }
 function drawBackground(viewWidth, viewHeight) {
@@ -138,8 +124,16 @@ function drawNoodle(player) {
 function drawPasta(player) {
   const pos = worldToScreen(player.x, player.y); const width = player.w * state.zoom; const height = player.h * state.zoom; if (pos.x > innerWidth + 60 || pos.x + width < -60 || pos.y > innerHeight + 60 || pos.y + height < -60) return;
   ctx.save(); ctx.translate(pos.x, pos.y); if (player.finished) ctx.globalAlpha = .5;
-  ctx.fillStyle = 'rgba(21,33,39,.45)'; ctx.beginPath(); ctx.ellipse(width / 2, height + 5, width * .6, 5, 0, 0, Math.PI * 2); ctx.fill();
-  if (pastaSprite.width) ctx.drawImage(pastaSprite, 0, 0, width, height); else { ctx.fillStyle = '#e5a33c'; ctx.fillRect(0, 0, width, height); }
+  ctx.fillStyle = 'rgba(21,33,39,.45)'; ctx.beginPath(); ctx.ellipse(width * .44, height * .9, width * .52, height * .12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#7a7e7a'; ctx.fillRect(width * .72, height * .65, width * .38, height * .13); ctx.fillRect(width * .78, height * .77, width * .32, height * .09);
+  ctx.strokeStyle = '#666b68'; ctx.lineWidth = Math.max(2, 2 * state.zoom); for (let fork = 0; fork < 3; fork += 1) { ctx.beginPath(); ctx.moveTo(width * (.82 + fork * .05), height * (.68 + fork * .06)); ctx.lineTo(width * (1.14 + fork * .04), height * (.68 + fork * .06)); ctx.stroke(); }
+  ctx.fillStyle = '#202426'; ctx.fillRect(width * .1, height * .67, width * .54, height * .28); ctx.strokeStyle = '#59605d'; ctx.lineWidth = 3; ctx.strokeRect(width * .1, height * .67, width * .54, height * .28);
+  ctx.fillStyle = '#414846'; for (let roller = 0; roller < 4; roller += 1) ctx.fillRect(width * (.16 + roller * .12), height * .72, width * .07, height * .17);
+  ctx.fillStyle = '#e7b83f'; ctx.strokeStyle = '#9b7126'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(width * .38, height * .52, width * .43, height * .3, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#f6d45f'; ctx.beginPath(); ctx.ellipse(width * .38, height * .42, width * .4, height * .24, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.ellipse(width * .38, height * .33, width * .35, height * .2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ef3537'; ctx.beginPath(); ctx.ellipse(width * .38, height * .19, width * .27, height * .2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#83352d'; [[.29,.17],[.43,.14],[.48,.23]].forEach(([x, y]) => { ctx.beginPath(); ctx.arc(width * x, height * y, Math.max(3, width * .055), 0, Math.PI * 2); ctx.fill(); });
+  ctx.fillStyle = '#e7b83f'; ctx.strokeStyle = '#9b7126'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(width * .58, height * .21); ctx.lineTo(width * 1.02, height * .09); ctx.lineTo(width * 1.05, height * .2); ctx.lineTo(width * .59, height * .34); ctx.closePath(); ctx.fill(); ctx.stroke();
   if (player.id === state.meId) { ctx.strokeStyle = '#f0bf4d'; ctx.lineWidth = 2; ctx.strokeRect(-3, -3, width + 6, height + 6); }
   ctx.fillStyle = '#f4f2e9'; ctx.font = `${Math.max(9, 10 * state.zoom)}px IBM Plex Mono, monospace`; ctx.textAlign = 'center'; ctx.fillText(player.name, width / 2, -12 * state.zoom); ctx.restore();
 }

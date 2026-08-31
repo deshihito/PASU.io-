@@ -9,6 +9,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 const PORT = process.env.PORT || 3000;
 const TICK_MS = 50;
+const PHYSICS = { playerAccel: .78, playerMaxSpeed: 13, gravity: .5, objectGravity: .44, noodleTension: .025, maxHp: 100, hitCooldown: 550 };
 const WORLD = { width: 1800, height: 980, floorY: 860 };
 const COLORS = ['#f26a3d', '#18a8a8', '#f0bf4d', '#a56dff', '#70c1b3', '#ef476f'];
 const rooms = new Map();
@@ -53,7 +54,7 @@ function createArena(seed) {
   return { width: WORLD.width, height: WORLD.height, floorY: WORLD.floorY, platforms, anchors, objects, items, arenaLabel: `KNOT-${Math.floor(next() * 90 + 10)}` };
 }
 
-function createPlayer(id, name, index) { return { id, name: String(name || 'PASTA').slice(0, 12).toUpperCase(), color: COLORS[index % COLORS.length], x: 220 + index * 58, y: WORLD.floorY - 42, vx: 0, vy: 0, w: 74, h: 38, onGround: false, score: 0, fallCount: 0, checkpointX: 220 + index * 58, checkpointY: WORLD.floorY - 42, input: { move: 0, hook: false, aimX: 900, aimY: 400 }, hook: null, roomId: null }; }
+function createPlayer(id, name, index) { return { id, name: String(name || 'PASTA').slice(0, 12).toUpperCase(), color: COLORS[index % COLORS.length], x: 220 + index * 58, y: WORLD.floorY - 58, vx: 0, vy: 0, w: 92, h: 56, onGround: false, score: 0, hp: PHYSICS.maxHp, maxHp: PHYSICS.maxHp, fallCount: 0, hitFlashUntil: 0, invulnerableUntil: 0, checkpointX: 220 + index * 58, checkpointY: WORLD.floorY - 58, input: { move: 0, hook: false, aimX: 900, aimY: 400 }, hook: null, roomId: null }; }
 function addPlayer(room, id, name) { const player = createPlayer(id, name, room.players.size); player.roomId = room.id; room.players.set(id, player); return player; }
 function createRoom(hostId, hostName) { const id = code(); const room = { id, hostId, seed: Math.floor(Math.random() * 0xffffffff), map: null, players: new Map(), started: false }; room.map = createArena(room.seed); rooms.set(id, room); addPlayer(room, hostId, hostName); return room; }
 function respawn(player, room) { player.x = player.checkpointX; player.y = player.checkpointY; player.vx = 0; player.vy = 0; player.hook = null; }
@@ -65,7 +66,11 @@ function targetInAim(origin, target, aimAngle, spread, maxLength) { const length
 function hookTarget(player, room) {
   const origin = { x: player.x + player.w / 2, y: player.y + player.h / 2 }; const aimAngle = Math.atan2(player.input.aimY - origin.y, player.input.aimX - origin.x); const candidates = [];
   for (const anchor of room.map.anchors) { const found = targetInAim(origin, anchor, aimAngle, .3, 680); if (found) candidates.push({ type: 'terrain', id: anchor.id, x: found.x, y: found.y, length: found.length, delta: found.delta }); }
-  for (const object of room.map.objects) { const found = targetInAim(origin, objectPoint(object), aimAngle, .34, 620); if (found) candidates.push({ type: 'object', id: object.id, x: found.x, y: found.y, length: found.length, delta: found.delta, weight: object.weight }); }
+  for (const surface of room.map.platforms) {
+    const points = [{ x: surface.x + surface.w / 2, y: surface.y }, { x: surface.x + surface.w / 2, y: surface.y + surface.h }, { x: surface.x, y: surface.y + surface.h / 2 }, { x: surface.x + surface.w, y: surface.y + surface.h / 2 }];
+    points.forEach((point, index) => { const found = targetInAim(origin, point, aimAngle, .24, 680); if (found) candidates.push({ type: 'terrain', id: `${surface.id}-edge-${index}`, x: found.x, y: found.y, length: found.length, delta: found.delta }); });
+  }
+  for (const object of room.map.objects) { const found = targetInAim(origin, objectPoint(object), aimAngle, .65, 720); if (found) candidates.push({ type: 'object', id: object.id, x: found.x, y: found.y, length: found.length, delta: found.delta, weight: object.weight }); }
   for (const other of room.players.values()) { if (other.id === player.id) continue; const found = targetInAim(origin, { x: other.x + other.w / 2, y: other.y + other.h / 2 }, aimAngle, .42, 560); if (found) candidates.push({ type: 'player', id: other.id, x: found.x, y: found.y, length: found.length, delta: found.delta }); }
   candidates.sort((a, b) => a.delta * 420 + a.length - (b.delta * 420 + b.length)); const target = candidates[0]; return target ? { type: target.type, id: target.id, x: target.x, y: target.y, len: target.length, weight: target.weight || 1 } : null;
 }
@@ -80,28 +85,35 @@ function updateHook(player, room) {
   const ox = player.x + player.w / 2; const oy = player.y + player.h / 2; const dx = tx - ox; const dy = ty - oy; const length = Math.hypot(dx, dy); player.hook.len = length;
   if (length > 720) { player.hook = null; return; }
   if (length < 42) return;
-  const nx = dx / length; const ny = dy / length; const tangentX = -ny; const tangentY = nx; const tension = Math.min(1.6, .36 + (length - 42) * .014);
-  if (player.hook.type === 'terrain') { player.vx += nx * tension + tangentX * player.input.move * .32; player.vy += ny * tension + tangentY * player.input.move * .32; }
-  if (targetObject) { targetObject.vx -= nx * tension / targetObject.weight; targetObject.vy -= ny * tension / targetObject.weight; player.vx += tangentX * player.input.move * .08; }
-  if (targetPlayer) { player.vx += nx * tension * .72 + tangentX * player.input.move * .22; player.vy += ny * tension * .72 + tangentY * player.input.move * .22; targetPlayer.vx -= nx * tension * .18; targetPlayer.vy -= ny * tension * .12; }
+  const nx = dx / length; const ny = dy / length; const tangentX = -ny; const tangentY = nx;
+  const mouseLength = clamp(dist(ox, oy, player.input.aimX, player.input.aimY), 42, 720);
+  const stretch = Math.max(0, length - mouseLength);
+  const mouseDX = player.input.aimX - ox; const mouseDY = player.input.aimY - oy; const mouseLengthSafe = Math.max(1, Math.hypot(mouseDX, mouseDY));
+  const mouseTorque = clamp((dx * mouseDY - dy * mouseDX) / (length * mouseLengthSafe), -1, 1);
+  const tension = Math.min(2.6, stretch * PHYSICS.noodleTension * 1.7);
+  const tangentForce = mouseTorque * .42;
+  if (tension <= 0 && Math.abs(tangentForce) < .01) return;
+  if (player.hook.type === 'terrain') { player.vx += nx * tension + tangentX * tangentForce; player.vy += ny * tension + tangentY * tangentForce; }
+  if (targetObject) { targetObject.vx -= nx * tension / targetObject.weight; targetObject.vy -= ny * tension / targetObject.weight; targetObject.vx -= tangentX * tangentForce / targetObject.weight; targetObject.vy -= tangentY * tangentForce / targetObject.weight; }
+  if (targetPlayer) { player.vx += nx * tension * .55 + tangentX * tangentForce; player.vy += ny * tension * .55 + tangentY * tangentForce; targetPlayer.vx -= nx * tension * .16; targetPlayer.vy -= ny * tension * .1; }
 }
 function collides(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
 function settleBody(body, room, oldBottom) {
   body.onGround = false;
   for (const surface of [...room.map.platforms, ...room.map.objects]) { if (surface === body || surface.broken) continue; const overlapsX = body.x + body.w > surface.x && body.x < surface.x + surface.w; const bottom = body.y + body.h; if (overlapsX && body.vy >= 0 && oldBottom <= surface.y + 10 && bottom >= surface.y) { body.y = surface.y - body.h; body.vy = 0; body.onGround = true; if (surface.checkpoint) { body.checkpointX = body.x; body.checkpointY = body.y; } return; } }
 }
-function updateObjects(room) { for (const object of room.map.objects) { object.vy += .44; object.vx *= .94; object.vy = clamp(object.vy, -16, 16); const oldBottom = object.y + object.h; object.x += object.vx; object.y += object.vy; object.x = clamp(object.x, 42, WORLD.width - object.w - 42); settleBody(object, room, oldBottom); if (object.y > WORLD.height + 100) { object.x = 760; object.y = 300; object.vx = 0; object.vy = 0; } } }
-function updatePlayer(player, room) { if (!room.started) return; if (player.input.move) player.vx += player.input.move * .46; player.vx = clamp(player.vx, -8.5, 8.5); if (!player.input.move) player.vx *= .86; player.vy += .5; const oldBottom = player.y + player.h; updateHook(player, room); player.x += player.vx; player.y += player.vy; player.x = clamp(player.x, 42, WORLD.width - player.w - 42); settleBody(player, room, oldBottom); if (player.y > WORLD.height + 140) { player.fallCount += 1; player.score = Math.max(0, player.score - 1); respawn(player, room); } for (const item of room.map.items) { if (!item.collected && dist(player.x + player.w / 2, player.y + player.h / 2, item.x, item.y) < 45) { item.collected = true; player.score += item.value; io.to(room.id).emit('itemCollected', { itemId: item.id, playerId: player.id, score: player.score, value: item.value }); } } }
-function publicState(room) { return { room: { id: room.id, hostId: room.hostId, started: room.started, seed: room.seed }, map: room.map, players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, color: p.color, x: p.x, y: p.y, w: p.w, h: p.h, vx: p.vx, vy: p.vy, onGround: p.onGround, score: p.score, fallCount: p.fallCount, hook: p.hook })) }; }
+function updateObjects(room, now) { for (const object of room.map.objects) { object.vy += PHYSICS.objectGravity; object.vx *= .94; object.vy = clamp(object.vy, -18, 18); const oldBottom = object.y + object.h; object.x += object.vx; object.y += object.vy; object.x = clamp(object.x, 42, WORLD.width - object.w - 42); settleBody(object, room, oldBottom); const speed = Math.hypot(object.vx, object.vy); if (speed > 3.4) { for (const player of room.players.values()) { if (now < player.invulnerableUntil || !collides(player, object)) continue; const damage = clamp(Math.round(speed * object.weight * 1.25), 5, 34); player.hp = Math.max(0, player.hp - damage); player.hitFlashUntil = now + 180; player.invulnerableUntil = now + PHYSICS.hitCooldown; player.vx += Math.sign(player.x - object.x || 1) * Math.min(8, speed * .5); player.vy -= Math.min(8, speed * .28); io.to(room.id).emit('playerHit', { playerId: player.id, damage, hp: player.hp, objectId: object.id }); } } if (object.y > WORLD.height + 100) { object.x = 760; object.y = 300; object.vx = 0; object.vy = 0; } } }
+function updatePlayer(player, room) { if (!room.started) return; player.vx *= .985; player.vx = clamp(player.vx, -PHYSICS.playerMaxSpeed, PHYSICS.playerMaxSpeed); player.vy += PHYSICS.gravity; const oldBottom = player.y + player.h; updateHook(player, room); player.x += player.vx; player.y += player.vy; player.x = clamp(player.x, 42, WORLD.width - player.w - 42); settleBody(player, room, oldBottom); if (player.y > WORLD.height + 140) { player.fallCount += 1; player.score = Math.max(0, player.score - 1); respawn(player, room); } for (const item of room.map.items) { if (!item.collected && dist(player.x + player.w / 2, player.y + player.h / 2, item.x, item.y) < 45) { item.collected = true; player.score += item.value; io.to(room.id).emit('itemCollected', { itemId: item.id, playerId: player.id, score: player.score, value: item.value }); } } }
+function publicState(room) { return { room: { id: room.id, hostId: room.hostId, started: room.started, seed: room.seed }, map: room.map, players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, color: p.color, x: p.x, y: p.y, w: p.w, h: p.h, vx: p.vx, vy: p.vy, onGround: p.onGround, score: p.score, hp: p.hp, maxHp: p.maxHp, hitFlashUntil: p.hitFlashUntil, fallCount: p.fallCount, hook: p.hook })) }; }
 function broadcast(room) { io.to(room.id).emit('state', publicState(room)); }
 
 io.on('connection', (socket) => {
   socket.on('createRoom', ({ name }) => { const room = createRoom(socket.id, name); socket.join(room.id); socket.data.roomId = room.id; socket.emit('roomJoined', publicState(room)); });
   socket.on('joinRoom', ({ code: roomCode, name }) => { const room = rooms.get(String(roomCode || '').trim().toUpperCase()); if (!room || room.started || room.players.size >= 6) { socket.emit('roomError', 'ROOM'); return; } addPlayer(room, socket.id, name); socket.join(room.id); socket.data.roomId = room.id; socket.emit('roomJoined', publicState(room)); broadcast(room); });
   socket.on('startGame', () => { const room = rooms.get(socket.data.roomId); if (!room || room.hostId !== socket.id || room.started) return; room.started = true; for (const player of room.players.values()) respawn(player, room); broadcast(room); });
-  socket.on('input', (data) => { const room = rooms.get(socket.data.roomId); const player = room?.players.get(socket.id); if (!player) return; player.input = { move: clamp(Number(data?.move) || 0, -1, 1), hook: Boolean(data?.hook), aimX: Number(data?.aimX) || player.x, aimY: Number(data?.aimY) || player.y }; });
+  socket.on('input', (data) => { const room = rooms.get(socket.data.roomId); const player = room?.players.get(socket.id); if (!player) return; player.input = { hook: Boolean(data?.hook), aimX: Number(data?.aimX) || player.x, aimY: Number(data?.aimY) || player.y }; });
   socket.on('leaveRoom', () => { const room = removePlayer(socket.id); socket.leave(room?.id || ''); socket.data.roomId = null; if (room) broadcast(room); });
   socket.on('disconnect', () => { const room = removePlayer(socket.id); if (room) broadcast(room); });
 });
-setInterval(() => { for (const room of rooms.values()) { updateObjects(room); for (const player of room.players.values()) updatePlayer(player, room); broadcast(room); } }, TICK_MS);
+setInterval(() => { const now = Date.now(); for (const room of rooms.values()) { updateObjects(room, now); for (const player of room.players.values()) updatePlayer(player, room); broadcast(room); } }, TICK_MS);
 server.listen(PORT, () => console.log(`Past.io arena server listening on ${PORT}`));

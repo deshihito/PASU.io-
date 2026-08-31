@@ -22,11 +22,6 @@ app.get('/', (req, res) => {
 const { BLOCK_SIZE, GAME_WIDTH, GAME_HEIGHT } = maps;
 
 // ===== オブジェクト =====
-const WARP_PADS = [
-  { x: 500, y: 520, w: 50, h: 10 },
-  { x: 1500, y: 520, w: 50, h: 10 },
-  { x: 2500, y: 520, w: 50, h: 10 }
-];
 const REST_ZONE = { x: 3200, y: 0, w: 600, h: 800 };
 const SHOP_NPC = { x: 3450, y: 400, w: 40, h: 50 };
 const MAPS = maps.getMapList();
@@ -265,7 +260,6 @@ setInterval(() => {
     // 物理
     if (p.state !== 'hand_mode') p.vy += C.GRAVITY * C.TIME_SCALE;
     physics.resolveBlockCollision(p, worldState.terrain);
-    physics.checkWarpPads(p, WARP_PADS, worldState.terrain);
     
     // コヨーテタイム
     if (p.onGround) p.coyoteTime = 6;
@@ -385,7 +379,6 @@ setInterval(() => {
       levers: worldState.levers,
       doors: worldState.doors,
       movables: worldState.movables,
-      warpPads: WARP_PADS,
       restZone: REST_ZONE,
       shopNpc: SHOP_NPC,
       maps: MAPS,

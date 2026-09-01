@@ -1,4 +1,4 @@
-/* Past.io server: cramped horizontal PvP arena, pasta players, noodle-to-anything interaction. */
+/* Design philosophy: vector pasta western — flat shapes, crisp outlines, white/yellow/red contrast, kinetic noodle physics. */
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -9,111 +9,55 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 const PORT = process.env.PORT || 3000;
 const TICK_MS = 50;
-const PHYSICS = { playerAccel: .78, playerMaxSpeed: 13, gravity: .5, objectGravity: .44, noodleTension: .025, maxHp: 100, hitCooldown: 550 };
-const WORLD = { width: 1800, height: 980, floorY: 860 };
-const COLORS = ['#f26a3d', '#18a8a8', '#f0bf4d', '#a56dff', '#70c1b3', '#ef476f'];
+const WORLD = { width: 18000, height: 9800, floorY: 8600 };
+const PHYSICS = { gravity: .48, objectGravity: .42, noodleTension: .026, maxHp: 100, hitCooldown: 550 };
+const COLORS = ['#F6C445', '#D94A32', '#2F4858', '#E08E0B', '#6B7280', '#9E2A2B'];
+const MODES = { tag: { label: 'TAG / 鬼ごっこ', goal: '触れた相手にソースを渡せ', color: '#D94A32' }, hide: { label: 'HIDE / 隠れんぼ', goal: '見つからずに逃げ切れ', color: '#2F4858' }, free: { label: 'FREE / フリーモード', goal: '皿の上を好きに転がれ', color: '#E08E0B' }, hill: { label: 'HILL / ヒルアンドハイ', goal: '高い場所を奪い合え', color: '#6B7280' }, pvp: { label: 'PVP / ソース決闘', goal: '拾って、持って、ぶつけろ', color: '#D94A32' } };
 const rooms = new Map();
-
 app.use(express.static(path.join(__dirname, '../docs')));
-app.get('/manus-storage/pastio-pasta-player_198039e1.png', (_req, res) => res.sendFile('/home/ubuntu/webdev-static-assets/pastio-pasta-player.png'));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, '../docs/index.html')));
-function code() { let value; do value = Math.random().toString(36).slice(2, 6).toUpperCase(); while (rooms.has(value)); return value; }
-function rng(seed) { let value = seed >>> 0; return () => { value += 0x6d2b79f5; let t = value; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+function rng(seed) { let v = seed >>> 0; return () => { v += 0x6d2b79f5; let t = v; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 function dist(ax, ay, bx, by) { return Math.hypot(bx - ax, by - ay); }
 function rect(id, x, y, w, h, tag = 'wall') { return { id, x, y, w, h, tag, fixed: true }; }
-
-function createArena(seed) {
-  const next = rng(seed);
-  const platforms = [
-    rect('floor-left', 0, WORLD.floorY, 520, 120, 'floor'), rect('floor-mid', 610, 770, 320, 210, 'floor'), rect('floor-right', 1010, WORLD.floorY, 790, 120, 'floor'),
-    rect('ceiling-left', 0, 0, 620, 38, 'ceiling'), rect('ceiling-right', 1120, 0, 680, 38, 'ceiling'),
-    rect('wall-left', 0, 0, 42, WORLD.height, 'wall'), rect('wall-right', WORLD.width - 42, 0, 42, WORLD.height, 'wall'),
-    rect('bridge-a', 120, 610, 230, 28, 'beam'), rect('bridge-b', 420, 450, 190, 28, 'beam'), rect('bridge-c', 770, 520, 260, 28, 'beam'),
-    rect('bridge-d', 1110, 610, 190, 28, 'beam'), rect('bridge-e', 1370, 420, 260, 28, 'beam'),
-    rect('chimney', 650, 230, 56, 540, 'wall'), rect('chimney-cap', 650, 230, 210, 28, 'beam'),
-    rect('slot-left', 190, 300, 220, 24, 'beam'), rect('slot-right', 1180, 230, 190, 24, 'beam'),
-    rect('underpass', 880, 690, 30, 170, 'wall'), rect('underpass-top', 760, 690, 150, 26, 'beam'),
-  ];
-  const anchors = [
-    { id: 'a-ceil-1', x: 180, y: 90, type: 'anchor' }, { id: 'a-ceil-2', x: 500, y: 150, type: 'anchor' }, { id: 'a-chimney', x: 740, y: 180, type: 'anchor' },
-    { id: 'a-mid', x: 970, y: 350, type: 'anchor' }, { id: 'a-right-1', x: 1260, y: 110, type: 'anchor' }, { id: 'a-right-2', x: 1550, y: 300, type: 'anchor' },
-    { id: 'a-floor-1', x: 180, y: 790, type: 'anchor' }, { id: 'a-floor-2', x: 1090, y: 790, type: 'anchor' },
-  ];
+function makeArena(seed, mode) {
+  const next = rng(seed); const platforms = [rect('floor', 0, WORLD.floorY, WORLD.width, 120, 'floor'), rect('ceiling', 0, 0, WORLD.width, 40, 'ceiling'), rect('wall-left', 0, 0, 42, WORLD.height, 'wall'), rect('wall-right', WORLD.width - 42, 0, 42, WORLD.height, 'wall')];
+  for (let i = 0; i < 94; i += 1) { const x = 160 + Math.floor(next() * (WORLD.width - 520)); const y = 500 + Math.floor(next() * 7600); const w = 180 + Math.floor(next() * 440); const h = 26 + Math.floor(next() * 20); platforms.push(rect(`ledge-${i}`, x, y, w, h, i % 8 === 0 ? 'ramp' : 'beam')); }
+  const anchors = []; for (let i = 0; i < 56; i += 1) anchors.push({ id: `anchor-${i}`, x: 180 + Math.floor(next() * (WORLD.width - 360)), y: 250 + Math.floor(next() * 8000), type: 'anchor' });
   const objects = [
-    { id: 'crate-heavy', x: 470, y: 735, w: 86, h: 86, vx: 0, vy: 0, weight: 3.2, kind: 'crate', angle: 0 },
-    { id: 'crate-light', x: 930, y: 570, w: 66, h: 66, vx: 0, vy: 0, weight: 1, kind: 'crate', angle: 0 },
-    { id: 'drum', x: 1050, y: 720, w: 72, h: 72, vx: 0, vy: 0, weight: 1.8, kind: 'drum', angle: 0 },
-    { id: 'cargo', x: 1390, y: 700, w: 140, h: 42, vx: 0, vy: 0, weight: 4, kind: 'cargo', angle: 0 },
+    { id: 'hammer-01', x: 1200, y: 8200, w: 118, h: 42, vx: 0, vy: 0, weight: 4.8, kind: 'hammer', effect: 'heavy-hit', angle: 0, heldBy: null },
+    { id: 'gun-01', x: 2900, y: 8200, w: 90, h: 32, vx: 0, vy: 0, weight: .8, kind: 'gun', effect: 'recoil-shot', angle: 0, heldBy: null },
+    { id: 'stone-01', x: 4700, y: 8200, w: 44, h: 44, vx: 0, vy: 0, weight: 1.2, kind: 'stone', effect: 'bonk', angle: 0, heldBy: null },
+    { id: 'hammer-02', x: 8200, y: 8200, w: 118, h: 42, vx: 0, vy: 0, weight: 4.8, kind: 'hammer', effect: 'heavy-hit', angle: 0, heldBy: null },
+    { id: 'gun-02', x: 11200, y: 8200, w: 90, h: 32, vx: 0, vy: 0, weight: .8, kind: 'gun', effect: 'recoil-shot', angle: 0, heldBy: null },
+    { id: 'stone-02', x: 14500, y: 8200, w: 44, h: 44, vx: 0, vy: 0, weight: 1.2, kind: 'stone', effect: 'bonk', angle: 0, heldBy: null },
   ];
-  const items = [
-    { id: 'scrap-1', x: 318, y: 560, type: 'scrap', value: 1, collected: false },
-    { id: 'scrap-2', x: 840, y: 470, type: 'scrap', value: 1, collected: false },
-    { id: 'relic-1', x: 1450, y: 370, type: 'relic', value: 3, collected: false },
-  ];
-  return { width: WORLD.width, height: WORLD.height, floorY: WORLD.floorY, platforms, anchors, objects, items, arenaLabel: `KNOT-${Math.floor(next() * 90 + 10)}` };
+  const landmarks = []; for (let i = 0; i < 18; i += 1) landmarks.push({ id: `landmark-${i}`, x: 650 + i * 980, y: 300 + Math.floor(next() * 7200), kind: ['fork', 'cheese', 'sauce', 'crate'][i % 4] });
+  const items = Array.from({ length: 30 }, (_, i) => ({ id: `crumb-${i}`, x: 280 + Math.floor(next() * (WORLD.width - 560)), y: 900 + Math.floor(next() * 7000), type: i % 5 === 0 ? 'relic' : 'crumb', value: i % 5 === 0 ? 3 : 1, collected: false }));
+  return { width: WORLD.width, height: WORLD.height, floorY: WORLD.floorY, platforms, anchors, objects, landmarks, items, arenaLabel: `PLATE-${String(Math.floor(next() * 90) + 10).padStart(2, '0')}`, mode };
 }
-
-function createPlayer(id, name, index) { return { id, name: String(name || 'PASTA').slice(0, 12).toUpperCase(), color: COLORS[index % COLORS.length], x: 220 + index * 58, y: WORLD.floorY - 58, vx: 0, vy: 0, w: 92, h: 56, onGround: false, score: 0, hp: PHYSICS.maxHp, maxHp: PHYSICS.maxHp, fallCount: 0, hitFlashUntil: 0, invulnerableUntil: 0, checkpointX: 220 + index * 58, checkpointY: WORLD.floorY - 58, input: { move: 0, hook: false, aimX: 900, aimY: 400 }, hook: null, roomId: null }; }
-function addPlayer(room, id, name) { const player = createPlayer(id, name, room.players.size); player.roomId = room.id; room.players.set(id, player); return player; }
-function createRoom(hostId, hostName) { const id = code(); const room = { id, hostId, seed: Math.floor(Math.random() * 0xffffffff), map: null, players: new Map(), started: false }; room.map = createArena(room.seed); rooms.set(id, room); addPlayer(room, hostId, hostName); return room; }
-function respawn(player, room) { player.x = player.checkpointX; player.y = player.checkpointY; player.vx = 0; player.vy = 0; player.hook = null; }
-function removePlayer(id) { for (const room of rooms.values()) { if (!room.players.has(id)) continue; room.players.delete(id); if (room.hostId === id) room.hostId = room.players.keys().next().value || null; if (!room.players.size) rooms.delete(room.id); return room; } return null; }
-function objectById(room, id) { return room.map.objects.find((object) => object.id === id); }
-function platformById(room, id) { return room.map.platforms.find((platform) => platform.id === id); }
-function objectPoint(object) { return { x: object.x + object.w / 2, y: object.y + object.h / 2 }; }
-function targetInAim(origin, target, aimAngle, spread, maxLength) { const length = dist(origin.x, origin.y, target.x, target.y); const angle = Math.atan2(target.y - origin.y, target.x - origin.x); const delta = Math.abs(Math.atan2(Math.sin(angle - aimAngle), Math.cos(angle - aimAngle))); return length < maxLength && delta < spread ? { ...target, length, delta } : null; }
-function hookTarget(player, room) {
-  const origin = { x: player.x + player.w / 2, y: player.y + player.h / 2 }; const aimAngle = Math.atan2(player.input.aimY - origin.y, player.input.aimX - origin.x); const candidates = [];
-  for (const anchor of room.map.anchors) { const found = targetInAim(origin, anchor, aimAngle, .3, 680); if (found) candidates.push({ type: 'terrain', id: anchor.id, x: found.x, y: found.y, length: found.length, delta: found.delta }); }
-  for (const surface of room.map.platforms) {
-    const points = [{ x: surface.x + surface.w / 2, y: surface.y }, { x: surface.x + surface.w / 2, y: surface.y + surface.h }, { x: surface.x, y: surface.y + surface.h / 2 }, { x: surface.x + surface.w, y: surface.y + surface.h / 2 }];
-    points.forEach((point, index) => { const found = targetInAim(origin, point, aimAngle, .24, 680); if (found) candidates.push({ type: 'terrain', id: `${surface.id}-edge-${index}`, x: found.x, y: found.y, length: found.length, delta: found.delta }); });
-  }
-  for (const object of room.map.objects) { const found = targetInAim(origin, objectPoint(object), aimAngle, .65, 720); if (found) candidates.push({ type: 'object', id: object.id, x: found.x, y: found.y, length: found.length, delta: found.delta, weight: object.weight }); }
-  for (const other of room.players.values()) { if (other.id === player.id) continue; const found = targetInAim(origin, { x: other.x + other.w / 2, y: other.y + other.h / 2 }, aimAngle, .42, 560); if (found) candidates.push({ type: 'player', id: other.id, x: found.x, y: found.y, length: found.length, delta: found.delta }); }
-  candidates.sort((a, b) => a.delta * 420 + a.length - (b.delta * 420 + b.length)); const target = candidates[0]; return target ? { type: target.type, id: target.id, x: target.x, y: target.y, len: target.length, weight: target.weight || 1 } : null;
-}
-function updateHook(player, room) {
-  if (!player.input.hook) { player.hook = null; return; }
-  if (!player.hook) player.hook = hookTarget(player, room);
-  if (!player.hook) return;
-  let tx = player.hook.x; let ty = player.hook.y; let targetPlayer = null; let targetObject = null;
-  if (player.hook.type === 'player') { targetPlayer = room.players.get(player.hook.id); if (!targetPlayer) { player.hook = null; return; } tx = targetPlayer.x + targetPlayer.w / 2; ty = targetPlayer.y + targetPlayer.h / 2; }
-  if (player.hook.type === 'object') { targetObject = objectById(room, player.hook.id); if (!targetObject) { player.hook = null; return; } tx = targetObject.x + targetObject.w / 2; ty = targetObject.y + targetObject.h / 2; }
-  player.hook.x = tx; player.hook.y = ty;
-  const ox = player.x + player.w / 2; const oy = player.y + player.h / 2; const dx = tx - ox; const dy = ty - oy; const length = Math.hypot(dx, dy); player.hook.len = length;
-  if (length > 720) { player.hook = null; return; }
-  if (length < 42) return;
-  const nx = dx / length; const ny = dy / length; const tangentX = -ny; const tangentY = nx;
-  const mouseLength = clamp(dist(ox, oy, player.input.aimX, player.input.aimY), 42, 720);
-  const stretch = Math.max(0, length - mouseLength);
-  const mouseDX = player.input.aimX - ox; const mouseDY = player.input.aimY - oy; const mouseLengthSafe = Math.max(1, Math.hypot(mouseDX, mouseDY));
-  const mouseTorque = clamp((dx * mouseDY - dy * mouseDX) / (length * mouseLengthSafe), -1, 1);
-  const tension = Math.min(2.6, stretch * PHYSICS.noodleTension * 1.7);
-  const tangentForce = mouseTorque * .42;
-  if (tension <= 0 && Math.abs(tangentForce) < .01) return;
-  if (player.hook.type === 'terrain') { player.vx += nx * tension + tangentX * tangentForce; player.vy += ny * tension + tangentY * tangentForce; }
-  if (targetObject) { targetObject.vx -= nx * tension / targetObject.weight; targetObject.vy -= ny * tension / targetObject.weight; targetObject.vx -= tangentX * tangentForce / targetObject.weight; targetObject.vy -= tangentY * tangentForce / targetObject.weight; }
-  if (targetPlayer) { player.vx += nx * tension * .55 + tangentX * tangentForce; player.vy += ny * tension * .55 + tangentY * tangentForce; targetPlayer.vx -= nx * tension * .16; targetPlayer.vy -= ny * tension * .1; }
-}
+function createPlayer(id, name, index) { return { id, name: String(name || 'PASTA').replace(/[^a-z0-9_-]/gi, '').slice(0, 12).toUpperCase() || 'PASTA', color: COLORS[index % COLORS.length], x: 220 + index * 95, y: WORLD.floorY - 74, vx: 0, vy: 0, w: 92, h: 66, onGround: false, score: 0, hp: PHYSICS.maxHp, fallCount: 0, taggedAt: 0, tagCount: 0, input: { hook: false, aimX: 900, aimY: 400, grab: false, use: false }, hook: null, heldObjectId: null, roomId: null, hidden: false, highTime: 0 }; }
+function code() { let value; do value = Math.random().toString(36).slice(2, 6).toUpperCase(); while (rooms.has(value)); return value; }
+function createRoom(hostId, hostName, mode = 'free') { const id = code(); const seed = Math.floor(Math.random() * 0xffffffff); const room = { id, hostId, seed, mode: MODES[mode] ? mode : 'free', map: null, players: new Map(), started: false }; room.map = makeArena(seed, room.mode); rooms.set(id, room); addPlayer(room, hostId, hostName); return room; }
+function addPlayer(room, id, name) { const p = createPlayer(id, name, room.players.size); p.roomId = room.id; room.players.set(id, p); return p; }
+function respawn(p, room) { p.x = p.checkpointX || 220; p.y = p.checkpointY || WORLD.floorY - p.h; p.vx = 0; p.vy = 0; p.hp = PHYSICS.maxHp; p.hook = null; p.heldObjectId = null; }
+function removePlayer(id) { for (const room of rooms.values()) if (room.players.has(id)) { room.players.delete(id); if (room.hostId === id) room.hostId = room.players.keys().next().value || null; if (!room.players.size) rooms.delete(room.id); return room; } return null; }
+function objectById(room, id) { return room.map.objects.find((o) => o.id === id); }
+function targetInAim(origin, target, angle, spread, max) { const length = dist(origin.x, origin.y, target.x, target.y); const a = Math.atan2(target.y - origin.y, target.x - origin.x); const delta = Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))); return length < max && delta < spread ? { length, delta } : null; }
+function hookTarget(p, room) { const origin = { x: p.x + p.w / 2, y: p.y + p.h / 2 }; const angle = Math.atan2(p.input.aimY - origin.y, p.input.aimX - origin.x); const targets = []; room.map.anchors.forEach((a) => { const f = targetInAim(origin, a, angle, .3, 760); if (f) targets.push({ type: 'terrain', id: a.id, x: a.x, y: a.y, ...f }); }); room.map.objects.forEach((o) => { const f = targetInAim(origin, { x: o.x + o.w / 2, y: o.y + o.h / 2 }, angle, .62, 760); if (f) targets.push({ type: 'object', id: o.id, x: o.x + o.w / 2, y: o.y + o.h / 2, ...f }); }); room.players.forEach((other) => { if (other.id === p.id) return; const f = targetInAim(origin, { x: other.x + other.w / 2, y: other.y + other.h / 2 }, angle, .42, 600); if (f) targets.push({ type: 'player', id: other.id, x: other.x + other.w / 2, y: other.y + other.h / 2, ...f }); }); targets.sort((a, b) => a.delta * 500 + a.length - b.delta * 500 - b.length); const t = targets[0]; return t ? { type: t.type, id: t.id, x: t.x, y: t.y, len: t.length } : null; }
+function updateHook(p, room) { if (!p.input.hook) { p.hook = null; return; } if (!p.hook) p.hook = hookTarget(p, room); if (!p.hook) return; let tx = p.hook.x; let ty = p.hook.y; const targetPlayer = p.hook.type === 'player' ? room.players.get(p.hook.id) : null; const targetObject = p.hook.type === 'object' ? objectById(room, p.hook.id) : null; if (targetPlayer) { tx = targetPlayer.x + targetPlayer.w / 2; ty = targetPlayer.y + targetPlayer.h / 2; } if (targetObject) { tx = targetObject.x + targetObject.w / 2; ty = targetObject.y + targetObject.h / 2; } const ox = p.x + p.w / 2; const oy = p.y + p.h / 2; const dx = tx - ox; const dy = ty - oy; const length = Math.hypot(dx, dy); p.hook.x = tx; p.hook.y = ty; p.hook.len = length; if (length > 760) { p.hook = null; return; } const nx = dx / (length || 1); const ny = dy / (length || 1); const aimLen = clamp(dist(ox, oy, p.input.aimX, p.input.aimY), 42, 760); const tension = Math.max(0, length - aimLen) * PHYSICS.noodleTension; if (p.hook.type === 'terrain') { p.vx += nx * tension; p.vy += ny * tension; } else if (targetObject && !targetObject.heldBy) { targetObject.vx -= nx * tension / targetObject.weight; targetObject.vy -= ny * tension / targetObject.weight; } else if (targetPlayer) { p.vx += nx * tension * .6; p.vy += ny * tension * .6; targetPlayer.vx -= nx * tension * .15; targetPlayer.vy -= ny * tension * .1; } }
 function collides(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
-function settleBody(body, room, oldBottom) {
-  body.onGround = false;
-  for (const surface of [...room.map.platforms, ...room.map.objects]) { if (surface === body || surface.broken) continue; const overlapsX = body.x + body.w > surface.x && body.x < surface.x + surface.w; const bottom = body.y + body.h; if (overlapsX && body.vy >= 0 && oldBottom <= surface.y + 10 && bottom >= surface.y) { body.y = surface.y - body.h; body.vy = 0; body.onGround = true; if (surface.checkpoint) { body.checkpointX = body.x; body.checkpointY = body.y; } return; } }
-}
-function updateObjects(room, now) { for (const object of room.map.objects) { object.vy += PHYSICS.objectGravity; object.vx *= .94; object.vy = clamp(object.vy, -18, 18); const oldBottom = object.y + object.h; object.x += object.vx; object.y += object.vy; object.x = clamp(object.x, 42, WORLD.width - object.w - 42); settleBody(object, room, oldBottom); const speed = Math.hypot(object.vx, object.vy); if (speed > 3.4) { for (const player of room.players.values()) { if (now < player.invulnerableUntil || !collides(player, object)) continue; const damage = clamp(Math.round(speed * object.weight * 1.25), 5, 34); player.hp = Math.max(0, player.hp - damage); player.hitFlashUntil = now + 180; player.invulnerableUntil = now + PHYSICS.hitCooldown; player.vx += Math.sign(player.x - object.x || 1) * Math.min(8, speed * .5); player.vy -= Math.min(8, speed * .28); io.to(room.id).emit('playerHit', { playerId: player.id, damage, hp: player.hp, objectId: object.id }); } } if (object.y > WORLD.height + 100) { object.x = 760; object.y = 300; object.vx = 0; object.vy = 0; } } }
-function updatePlayer(player, room) { if (!room.started) return; player.vx *= .985; player.vx = clamp(player.vx, -PHYSICS.playerMaxSpeed, PHYSICS.playerMaxSpeed); player.vy += PHYSICS.gravity; const oldBottom = player.y + player.h; updateHook(player, room); player.x += player.vx; player.y += player.vy; player.x = clamp(player.x, 42, WORLD.width - player.w - 42); settleBody(player, room, oldBottom); if (player.y > WORLD.height + 140) { player.fallCount += 1; player.score = Math.max(0, player.score - 1); respawn(player, room); } for (const item of room.map.items) { if (!item.collected && dist(player.x + player.w / 2, player.y + player.h / 2, item.x, item.y) < 45) { item.collected = true; player.score += item.value; io.to(room.id).emit('itemCollected', { itemId: item.id, playerId: player.id, score: player.score, value: item.value }); } } }
-function publicState(room) { return { room: { id: room.id, hostId: room.hostId, started: room.started, seed: room.seed }, map: room.map, players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, color: p.color, x: p.x, y: p.y, w: p.w, h: p.h, vx: p.vx, vy: p.vy, onGround: p.onGround, score: p.score, hp: p.hp, maxHp: p.maxHp, hitFlashUntil: p.hitFlashUntil, fallCount: p.fallCount, hook: p.hook })) }; }
+function updateObjects(room, now) { room.map.objects.forEach((o) => { if (o.heldBy) { const holder = room.players.get(o.heldBy); if (holder) { o.x = holder.x + holder.w / 2 - o.w / 2 + 56; o.y = holder.y + holder.h / 2 - o.h / 2; o.vx = holder.vx; o.vy = holder.vy; return; } o.heldBy = null; } o.vy += PHYSICS.objectGravity; o.vx *= .97; o.vy = clamp(o.vy, -18, 18); o.x += o.vx; o.y += o.vy; if (o.y + o.h >= WORLD.floorY) { o.y = WORLD.floorY - o.h; o.vy *= -.22; if (Math.abs(o.vy) < .7) o.vy = 0; } o.x = clamp(o.x, 42, WORLD.width - o.w - 42); const speed = Math.hypot(o.vx, o.vy); if (speed > 4) room.players.forEach((p) => { if (now < p.invulnerableUntil || !collides(p, o)) return; const damage = clamp(Math.round(speed * o.weight * .9), 4, 38); p.hp = Math.max(0, p.hp - damage); p.invulnerableUntil = now + PHYSICS.hitCooldown; p.vx += Math.sign(p.x - o.x || 1) * Math.min(12, speed * .55); p.vy -= Math.min(10, speed * .32); io.to(room.id).emit('playerHit', { playerId: p.id, damage, objectId: o.id, effect: o.effect }); }); }); }
+function updatePlayer(p, room, now) { if (!room.started) return; p.vx *= .985; const held = p.heldObjectId && objectById(room, p.heldObjectId); if (held) p.vx *= Math.max(.76, 1 - held.weight * .035); p.vy += PHYSICS.gravity; updateHook(p, room); p.x += p.vx; p.y += p.vy; p.x = clamp(p.x, 42, WORLD.width - p.w - 42); if (p.y + p.h >= WORLD.floorY) { p.y = WORLD.floorY - p.h; p.vy = 0; p.onGround = true; } else p.onGround = false; if (p.y > WORLD.height + 150) { p.fallCount += 1; respawn(p, room); } if (room.mode === 'hill' && p.y < 1200) { p.highTime += 1; p.score = Math.max(p.score, Math.floor(p.highTime / 20)); } p.hidden = room.mode === 'hide' && !p.input.hook && Math.abs(p.vx) < 1.8; if (room.mode === 'tag') room.players.forEach((other) => { if (other.id === p.id || now < p.taggedAt || now < other.taggedAt) return; if (dist(p.x + p.w / 2, p.y + p.h / 2, other.x + other.w / 2, other.y + other.h / 2) < 92) { p.taggedAt = now + 1800; p.tagCount += 1; p.score += 1; io.to(room.id).emit('tagged', { playerId: p.id, by: other.id }); } }); room.map.items.forEach((item) => { if (!item.collected && dist(p.x + p.w / 2, p.y + p.h / 2, item.x, item.y) < 62) { item.collected = true; p.score += item.value; io.to(room.id).emit('itemCollected', { itemId: item.id, playerId: p.id, score: p.score, value: item.value }); } }); }
+function publicState(room) { return { room: { id: room.id, hostId: room.hostId, started: room.started, seed: room.seed, mode: room.mode, modeLabel: MODES[room.mode].label, goal: MODES[room.mode].goal }, map: room.map, players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, color: p.color, x: p.x, y: p.y, vx: p.vx, vy: p.vy, w: p.w, h: p.h, onGround: p.onGround, score: p.score, hp: p.hp, fallCount: p.fallCount, taggedAt: p.taggedAt, tagCount: p.tagCount, hidden: p.hidden, hook: p.hook, heldObjectId: p.heldObjectId })) }; }
 function broadcast(room) { io.to(room.id).emit('state', publicState(room)); }
-
 io.on('connection', (socket) => {
-  socket.on('createRoom', ({ name }) => { const room = createRoom(socket.id, name); socket.join(room.id); socket.data.roomId = room.id; socket.emit('roomJoined', publicState(room)); });
-  socket.on('joinRoom', ({ code: roomCode, name }) => { const room = rooms.get(String(roomCode || '').trim().toUpperCase()); if (!room || room.started || room.players.size >= 6) { socket.emit('roomError', 'ROOM'); return; } addPlayer(room, socket.id, name); socket.join(room.id); socket.data.roomId = room.id; socket.emit('roomJoined', publicState(room)); broadcast(room); });
-  socket.on('startGame', () => { const room = rooms.get(socket.data.roomId); if (!room || room.hostId !== socket.id || room.started) return; room.started = true; for (const player of room.players.values()) respawn(player, room); broadcast(room); });
-  socket.on('input', (data) => { const room = rooms.get(socket.data.roomId); const player = room?.players.get(socket.id); if (!player) return; player.input = { hook: Boolean(data?.hook), aimX: Number(data?.aimX) || player.x, aimY: Number(data?.aimY) || player.y }; });
+  socket.on('createRoom', ({ name, mode }) => { const room = createRoom(socket.id, name, mode); socket.join(room.id); socket.data.roomId = room.id; socket.emit('roomJoined', publicState(room)); });
+  socket.on('joinRoom', ({ code: roomCode, name }) => { const room = rooms.get(String(roomCode || '').trim().toUpperCase()); if (!room || room.started || room.players.size >= 6) return socket.emit('roomError', 'ROOM'); addPlayer(room, socket.id, name); socket.join(room.id); socket.data.roomId = room.id; socket.emit('roomJoined', publicState(room)); broadcast(room); });
+  socket.on('startGame', () => { const room = rooms.get(socket.data.roomId); if (!room || room.hostId !== socket.id || room.started) return; room.started = true; room.players.forEach((p) => respawn(p, room)); broadcast(room); });
+  socket.on('input', (data) => { const room = rooms.get(socket.data.roomId); const p = room?.players.get(socket.id); if (!p) return; p.input = { hook: Boolean(data?.hook), grab: Boolean(data?.grab), use: Boolean(data?.use), aimX: Number(data?.aimX) || p.x, aimY: Number(data?.aimY) || p.y }; if (p.input.grab && room.mode === 'pvp' && !p.heldObjectId) { const near = room.map.objects.find((o) => !o.heldBy && dist(p.x + p.w / 2, p.y + p.h / 2, o.x + o.w / 2, o.y + o.h / 2) < 110); if (near) { near.heldBy = p.id; p.heldObjectId = near.id; } } if (!p.input.grab && p.heldObjectId) { const held = objectById(room, p.heldObjectId); if (held) { held.heldBy = null; held.vx = p.vx * (held.kind === 'gun' ? 2.6 : 1.2); held.vy = p.vy - (held.kind === 'hammer' ? 5 : 2); } p.heldObjectId = null; } if (p.input.use && p.heldObjectId) { const held = objectById(room, p.heldObjectId); if (held?.kind === 'gun') { p.vx -= Math.cos(Math.atan2(p.input.aimY - p.y, p.input.aimX - p.x)) * 8; p.vy -= 2; held.vx = p.vx * 2; } } });
   socket.on('leaveRoom', () => { const room = removePlayer(socket.id); socket.leave(room?.id || ''); socket.data.roomId = null; if (room) broadcast(room); });
   socket.on('disconnect', () => { const room = removePlayer(socket.id); if (room) broadcast(room); });
 });
-setInterval(() => { const now = Date.now(); for (const room of rooms.values()) { updateObjects(room, now); for (const player of room.players.values()) updatePlayer(player, room); broadcast(room); } }, TICK_MS);
-server.listen(PORT, () => console.log(`Past.io arena server listening on ${PORT}`));
+setInterval(() => { const now = Date.now(); rooms.forEach((room) => { updateObjects(room, now); room.players.forEach((p) => updatePlayer(p, room, now)); broadcast(room); }); }, TICK_MS);
+server.listen(PORT, () => console.log(`PASU.io vector arena listening on ${PORT}`));

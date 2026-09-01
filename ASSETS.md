@@ -1,18 +1,19 @@
 # Assets
 
-**Art direction:** ポストインダストリアル・スポーツグラフィック。煤けた青灰色をベースに、Past Orangeと警告イエローをゲームプレイの視認性に使う。背景は工業的だが、形状と状態表示は明快にする。
+**Art direction:** 写実的な素材を使わず、Canvas上で円・線・矩形・多角形を組み合わせるフラットなベクター調。白い皿を舞台に、アルデンテイエローをプレイヤーと重要物、トマトレッドを攻撃とソース芯、チャコールを輪郭と文字に使う。
 
-| Asset | Purpose | URL | Prompt summary |
-|---|---|---|---|
-| `pastio-reference.png` | ホームの背景、完成画面のビジュアルターゲット | `/manus-storage/pastio-reference_c408d8f3.png` | 縦型の工業アスレチック、足場、拾い物、プレイヤー、フック、最小HUD |
-| `pastio-mark.png` | ホームのブランドマーク | `/manus-storage/pastio-mark_61f58353.png` | 破れた円弧とフックの抽象記号、Past Orange、警告イエロー、透明背景 |
-| `pastio-scrap-texture.png` | ルーム画面の工業テクスチャ | `/manus-storage/pastio-scrap-texture_b1211a27.png` | 酸化コンクリートと塗装金属、傷、黄色塗装、タイル可能 |
+## Runtime assets
 
-素材はWebDevの管理URLを直接参照し、リポジトリへ大容量バイナリを追加しない。
+ゲーム内のプレイヤー、地形、ランドマーク、道具、アイテム、ソース飛沫はすべて `docs/game.js` のベクター描画で生成する。外部画像やWebGLモデルへの依存はないため、GitHub Pagesやローカル起動でも欠落しない。
 
-## Player pasta reference
+## Shape vocabulary
 
-- Source: user-provided `image.png`
-- Web asset: `/manus-storage/pastio-pasta-player_198039e1.png`
-- Usage: player sprite in `docs/game.js`; near-white background is removed in an offscreen Canvas before rendering.
-- Generation: none; this asset came directly from the user's attachment.
+| 要素 | ベクター表現 |
+|---|---|
+| プレイヤー | 黄色の二重円、赤い中心、チャコールの輪郭 |
+| 麺フック | 赤または黄色の直線と円形の接続点 |
+| ハンマー | 赤い矩形と黄色の柄 |
+| 銃 | チャコールの矩形と反動の速度線 |
+| 石ころ | 灰色の円 |
+| ランドマーク | フォークの線、チーズの三角形、ソース缶と木箱の矩形 |
+| アイテム | 黄色または赤の円 |

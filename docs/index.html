@@ -3,77 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Past.io</title>
+  <title>PASU.io — Vector Pasta Party</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600;700&family=Noto+Sans+JP:wght@500;700;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Bowlby+One+SC&family=Nunito+Sans:wght@600;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/style.css" />
-  <link rel="icon" href="/manus-storage/pastio-mark_61f58353.png" />
 </head>
 <body>
-  <main id="app">
-    <section id="homeScreen" class="screen home-screen">
-      <div class="home-art" aria-hidden="true"><span class="home-art__line"></span><span class="home-art__dot"></span></div>
-      <header class="brand-lockup">
-        <img class="brand-lockup__image" src="/manus-storage/pastio-mark_61f58353.png" alt="" onerror="this.hidden=true; this.nextElementSibling.style.display='block'" />
-        <div class="brand-mark" aria-hidden="true"><i></i><b></b></div>
-        <div>
-          <p class="eyebrow">PAST.IO / NOODLE ARENA</p>
-          <h1>PAST<span>.io</span></h1>
-        </div>
-      </header>
-      <div class="home-panel">
-        <div class="panel-kicker">RUN // 01</div>
-        <label class="field-label" for="nameInput">NAME</label>
-        <input id="nameInput" maxlength="12" autocomplete="nickname" placeholder="PLAYER" />
-        <div class="home-actions">
-          <button id="createButton" class="button button--primary">CREATE ROOM</button>
-          <div class="join-row">
-            <input id="roomInput" maxlength="4" inputmode="text" placeholder="CODE" aria-label="Room code" />
-            <button id="joinButton" class="button button--secondary">JOIN</button>
-          </div>
-        </div>
-        <p id="homeStatus" class="status-line" aria-live="polite"></p>
-      </div>
-      <footer class="home-footer"><span>CONNECT / PULL / COLLIDE</span><span>HOLD CLICK / NOODLE</span></footer>
-    </section>
-
-    <section id="roomScreen" class="screen room-screen is-hidden">
-      <div class="room-header">
-        <div class="brand-mini"><span class="brand-mark brand-mark--small"><i></i><b></b></span><span>PAST.IO</span></div>
-        <span class="room-tag">ROOM</span>
-      </div>
-      <div class="room-layout">
-        <div class="room-board">
-          <p class="eyebrow">READY LINE</p>
-          <h2 id="roomCodeLabel">----</h2>
-          <div class="room-meta"><span>SEED</span><strong id="seedLabel">----</strong></div>
-          <div class="room-rule"></div>
-          <div class="room-actions">
-            <button id="startButton" class="button button--primary">START</button>
-            <button id="leaveButton" class="button button--ghost">LEAVE</button>
-          </div>
-        </div>
-        <div class="players-panel">
-          <div class="players-heading"><span>PLAYERS</span><b id="playerCount">0/6</b></div>
-          <div id="playerList" class="player-list"></div>
-          <p id="roomStatus" class="status-line" aria-live="polite"></p>
-        </div>
-      </div>
-    </section>
-
-    <section id="gameScreen" class="screen game-screen is-hidden">
-      <canvas id="gameCanvas"></canvas>
-      <div class="game-hud game-hud--top-left"><span class="hud-label">ROOM</span><strong id="hudRoom">----</strong><span class="hud-sub" id="hudSeed">SEED ----</span><span class="hud-sub" id="hudLevel">ARENA ----</span><span class="hud-sub" id="hudHp">HP 100</span></div>
-      <div class="game-hud game-hud--top-right"><span class="hud-label">CREW</span><div id="hudCrew" class="crew-dots"></div></div>
-      <div class="game-hud game-hud--bottom-left"><span class="hud-label">NOODLE</span><div class="hook-meter"><i id="hookMeter"></i></div><span class="hud-sub">AIM / HOLD</span></div>
-      <div class="game-hud game-hud--bottom-right"><span class="hud-label">SCRAP</span><strong id="hudScore">00</strong><div class="slot-row"><i></i><i></i><i></i></div></div>
-      <div id="gameBanner" class="game-banner is-hidden"></div>
-      <div class="game-controls"><span>MOUSE AIM</span><span>CLICK HOLD / RELEASE</span></div>
-      <button id="gameLeaveButton" class="game-leave">EXIT</button>
-    </section>
-  </main>
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/game.js"></script>
-</body>
-</html>
+<main id="app">
+  <section id="homeScreen" class="screen home-screen">
+    <div class="vector-sun" aria-hidden="true"></div><div class="plate-line" aria-hidden="true"></div>
+    <header class="brand-lockup"><div class="logo-mark" aria-hidden="true"><i></i><b></b></div><div><p class="eyebrow">NOODLE PARTY / 01</p><h1>PASU<span>.io</span></h1></div></header>
+    <div class="home-copy"><p class="kicker">VECTOR PASTA WESTERN</p><h2>転がれ。<br /><em>ソースは</em><br />後から考えろ。</h2><p class="home-note">広い皿の上で、掴む。逃げる。ぶつける。<br />シンプルな図形で、混乱はもっと楽しくなる。</p></div>
+    <div class="home-panel"><div class="panel-head"><span>PLAY SETUP</span><b>5 MODES</b></div><label for="nameInput">YOUR NOODLE</label><input id="nameInput" maxlength="12" autocomplete="nickname" placeholder="PASTA" /><div class="mode-grid" id="modeGrid"></div><div class="home-actions"><button id="createButton" class="button button--primary">CREATE ROOM</button><div class="join-row"><input id="roomInput" maxlength="4" inputmode="text" placeholder="CODE" aria-label="Room code" /><button id="joinButton" class="button button--dark">JOIN</button></div></div><p id="homeStatus" class="status-line" aria-live="polite"></p></div>
+    <footer class="home-footer"><span>WHITE PLATE / YELLOW NOODLE / RED CORE</span><span>HOLD + AIM TO SWING</span></footer>
+  </section>
+  <section id="roomScreen" class="screen room-screen is-hidden"><header class="room-header"><div class="brand-mini"><span class="logo-mark logo-mark--small"><i></i><b></b></span><span>PASU.io</span></div><span class="room-tag" id="roomModeTag">FREE</span></header><div class="room-layout"><div class="room-board"><p class="eyebrow">ROOM READY / MODE</p><h2 id="roomModeLabel">FREE</h2><div class="room-code-label">ROOM CODE</div><strong id="roomCodeLabel">----</strong><p id="roomGoal" class="room-goal"></p><div class="room-actions"><button id="startButton" class="button button--primary">START</button><button id="leaveButton" class="button button--ghost">LEAVE</button></div></div><div class="players-panel"><div class="players-heading"><span>CREW</span><b id="playerCount">0/6</b></div><div id="playerList" class="player-list"></div><p id="roomStatus" class="status-line" aria-live="polite"></p></div></div></section>
+  <section id="gameScreen" class="screen game-screen is-hidden"><canvas id="gameCanvas"></canvas><div class="game-hud hud-left"><span class="hud-label" id="hudMode">FREE</span><strong id="hudGoal">ROLL</strong><span class="hud-sub" id="hudRoom">ROOM ----</span><span class="hud-sub" id="hudScore">SCORE 00</span></div><div class="game-hud hud-right"><span class="hud-label">CREW</span><div id="hudCrew" class="crew-dots"></div><span class="hud-sub" id="hudHp">HP 100</span></div><div class="game-hud hud-bottom"><span class="hud-key">HOLD CLICK</span><span>GRAB / AIM / RELEASE</span><div id="toolReadout" class="tool-readout">HAND EMPTY</div></div><div id="gameBanner" class="game-banner is-hidden"></div><button id="gameLeaveButton" class="game-leave">EXIT PLATE</button></section>
+</main><script src="/socket.io/socket.io.js"></script><script src="/game.js"></script>
+</body></html>

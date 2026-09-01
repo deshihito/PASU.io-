@@ -31,3 +31,11 @@ Roomは `id`、`hostId`、`seed`、`mode`、`started`、`players`、`map` を持
 ## Client structure
 
 `docs/index.html` は余計な操作説明を置かず、モード選択・ルームコード・最小HUD・接続状態の円形アイコンだけを表示する。`docs/style.css` はゲーム領域へ `touch-action: none`、`user-select: none`、`-webkit-touch-callout: none` を設定する。`docs/game.js` はCanvas上の円・線・矩形・多角形描画とSocket.IO同期を担当する。
+
+## Map variation and online placement
+
+`MODE_LAYOUTS`、`MODE_SPAWNS`、`MODE_OBJECTS` はモードごとに別定義を持つ。地形は固定の外壁・床・天井だけでなく、段差、縦壁、ゲート、天井付きの部屋、狭い通路、分岐、囲い、登坂を組み合わせる。`makeArena` はモードのレイアウトとseed由来の散在足場を結合する。
+
+`spawnPointFor` は既存プレイヤーを除いた占有位置から180ワールド単位以上離れたモード専用地点を選ぶ。候補が満杯の場合はグリッド上の安全地点へフォールバックする。新規参加時と落下後の復帰時に同じ処理を利用するため、オンライン開始時の重複を避ける。
+
+クライアントは右上の `miniMap` Canvasへ、固定地形・動態オブジェクト・全プレイヤー・現在のカメラ視界を縮小して描画する。メインCanvasと同じサーバー状態を使い、別の地形データを持たない。

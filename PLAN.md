@@ -33,3 +33,9 @@
 - 旧来の `grab`、`use`、Space、ハンド専用アクションがクライアントと説明文に残っていない。
 - 3種類のターゲットへ向けた分岐がサーバーに存在し、プレイヤー対象への反作用が維持される。
 - ローカルサーバーの `/` と `?demo` が応答し、`git diff --check` が成功する。
+
+## Mode-specific maps and spawn safety
+
+2026-09-01: 各モードに専用の `MODE_LAYOUTS`、`MODE_SPAWNS`、`MODE_OBJECTS` を持たせ、TAGは周回、HIDEは部屋型迷路、FREEは自由な高低差、HILLは登坂、PVPは仕切り付き闘技場として差別化する。共通の外壁・床・天井に加え、段差・縦壁・ゲート・囲い・分岐・散在足場を組み合わせる。
+
+`spawnPointFor` はモード専用の候補から既存プレイヤーとの距離が `spawnGap`（180）以上の地点を選ぶ。候補が埋まった場合は安全なグリッドへフォールバックし、`addPlayer` と `respawn` の両方で同じ配置処理を使う。右上のミニマップは同じ `map.platforms`、`map.objects`、`players`、カメラ位置を縮小描画する。

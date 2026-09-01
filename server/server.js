@@ -23,8 +23,9 @@ function rect(id, x, y, w, h, tag = 'wall') { return { id, x, y, w, h, tag, fixe
 function makeArena(seed, mode) {
   const next = rng(seed);
   const platforms = [rect('floor', 0, WORLD.floorY, WORLD.width, 120, 'floor'), rect('ceiling', 0, 0, WORLD.width, 40, 'ceiling'), rect('wall-left', 0, 0, 42, WORLD.height, 'wall'), rect('wall-right', WORLD.width - 42, 0, 42, WORLD.height, 'wall')];
+  platforms.push(rect('start-ledge-a', 140, 7900, 360, 28, 'beam'), rect('start-ledge-b', 620, 7150, 320, 28, 'beam'), rect('start-ledge-c', 1040, 6400, 300, 28, 'beam'));
   for (let i = 0; i < 94; i += 1) { const x = 160 + Math.floor(next() * (WORLD.width - 520)); const y = 500 + Math.floor(next() * 7600); const w = 180 + Math.floor(next() * 440); const h = 26 + Math.floor(next() * 20); platforms.push(rect(`ledge-${i}`, x, y, w, h, i % 8 === 0 ? 'ramp' : 'beam')); }
-  const anchors = Array.from({ length: 56 }, (_, i) => ({ id: `anchor-${i}`, x: 180 + Math.floor(next() * (WORLD.width - 360)), y: 250 + Math.floor(next() * 8000), type: 'anchor' }));
+  const anchors = [{ id: 'start-anchor-a', x: 420, y: 7750, type: 'anchor' }, { id: 'start-anchor-b', x: 820, y: 7000, type: 'anchor' }, { id: 'start-anchor-c', x: 1220, y: 6250, type: 'anchor' }, ...Array.from({ length: 56 }, (_, i) => ({ id: `anchor-${i}`, x: 180 + Math.floor(next() * (WORLD.width - 360)), y: 250 + Math.floor(next() * 8000), type: 'anchor' }))];
   const objects = [
     { id: 'hammer-01', x: 1200, y: 8200, w: 118, h: 42, vx: 0, vy: 0, weight: 4.8, kind: 'hammer', effect: 'heavy-hit', angle: 0 },
     { id: 'gun-01', x: 2900, y: 8200, w: 90, h: 32, vx: 0, vy: 0, weight: .8, kind: 'gun', effect: 'recoil-shot', angle: 0 },

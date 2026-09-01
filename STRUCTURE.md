@@ -18,19 +18,23 @@
 
 ### Player
 
-`id`、`name`、`color`、`x`、`y`、`vx`、`vy`、`w`、`h`、`hp`、`score`、`fallCount`、`hook`、`input` を持つ。`input` はフックの押下状態とマウス座標だけで、歩行・ジャンプ・攻撃専用入力はない。フックの最大距離は760、最大力は2.6に制限する。
+`id`、`name`、`color`、`x`、`y`、`vx`、`vy`、`w`、`h`、`hp`、`score`、`fallCount`、`hook`、`input` を持つ。`input` はフックの押下状態とマウス座標だけで、歩行・ジャンプ・攻撃専用入力はない。フックの最大距離は760、最大力は8、動態オブジェクト操作係数は2.2に制限する。プレイヤーと動態オブジェクトの上端は天井Y=40で停止する。
 
 ### InteractiveObject
 
-`id`、`x`、`y`、`w`、`h`、`vx`、`vy`、`weight`、`kind`、`effect`、`angle` を持つ。ハンマーは重量4.8、銃は0.8、石ころは1.2。PvPではフックで移動させ、速度と重量から接触ダメージを計算する。
+`id`、`x`、`y`、`w`、`h`、`vx`、`vy`、`weight`、`kind`、`effect`、`angle` を持つ。ハンマーは重量4.8、銃は0.8、石ころは1.2。PvPではフックで移動させ、速度と重量から接触ダメージを計算する。上方向のフック力も対象物の`vy`へ適用し、天井Y=40で反射せず停止する。
 
 ### Room / Map
 
-Roomは `id`、`hostId`、`seed`、`mode`、`started`、`players`、`map` を持つ。Mapは `18000 × 9800` のワールドに、床・天井・壁、100個以上の固定足場、18ランドマーク、6道具、30アイテムを含む。
+Roomは `id`、`hostId`、`seed`、`mode`、`started`、`ended`、`startedAt`、`endedAt`、`winnerId`、`endReason`、`players`、`map` を持つ。Mapは `18000 × 9800` のワールドに、床・天井・壁、モード別の固定地形、18ランドマーク、6道具、30アイテム、専用スポーン地点を含む。
 
 ## Client structure
 
 `docs/index.html` は余計な操作説明を置かず、モード選択・ルームコード・最小HUD・接続状態の円形アイコンだけを表示する。`docs/style.css` はゲーム領域へ `touch-action: none`、`user-select: none`、`-webkit-touch-callout: none` を設定する。`docs/game.js` はCanvas上の円・線・矩形・多角形描画とSocket.IO同期を担当する。
+
+## Rules and round state
+
+`MODE_RULES` は各モードのルール、目標値、制限時間、勝利条件を持つ。TAGは5タッチ、HIDEは隠れ30秒、FREEは20ポイント、HILLは頂上滞在30秒、PVPは最後の1人を勝利とし、制限時間到達時はモード別の累計値で判定する。`updateRound` が目標到達または時間切れを検知し、`roundEnd` と `room.ended` を配信する。
 
 ## Map variation and online placement
 

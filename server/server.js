@@ -25,7 +25,6 @@ function makeArena(seed, mode) {
   const platforms = [rect('floor', 0, WORLD.floorY, WORLD.width, 120, 'floor'), rect('ceiling', 0, 0, WORLD.width, 40, 'ceiling'), rect('wall-left', 0, 0, 42, WORLD.height, 'wall'), rect('wall-right', WORLD.width - 42, 0, 42, WORLD.height, 'wall')];
   platforms.push(rect('start-ledge-a', 140, 7900, 360, 28, 'beam'), rect('start-ledge-b', 620, 7150, 320, 28, 'beam'), rect('start-ledge-c', 1040, 6400, 300, 28, 'beam'));
   for (let i = 0; i < 94; i += 1) { const x = 160 + Math.floor(next() * (WORLD.width - 520)); const y = 500 + Math.floor(next() * 7600); const w = 180 + Math.floor(next() * 440); const h = 26 + Math.floor(next() * 20); platforms.push(rect(`ledge-${i}`, x, y, w, h, i % 8 === 0 ? 'ramp' : 'beam')); }
-  const anchors = [{ id: 'start-anchor-a', x: 420, y: 7750, type: 'anchor' }, { id: 'start-anchor-b', x: 820, y: 7000, type: 'anchor' }, { id: 'start-anchor-c', x: 1220, y: 6250, type: 'anchor' }, ...Array.from({ length: 56 }, (_, i) => ({ id: `anchor-${i}`, x: 180 + Math.floor(next() * (WORLD.width - 360)), y: 250 + Math.floor(next() * 8000), type: 'anchor' }))];
   const objects = [
     { id: 'hammer-01', x: 1200, y: 8200, w: 118, h: 42, vx: 0, vy: 0, weight: 4.8, kind: 'hammer', effect: 'heavy-hit', angle: 0 },
     { id: 'gun-01', x: 2900, y: 8200, w: 90, h: 32, vx: 0, vy: 0, weight: .8, kind: 'gun', effect: 'recoil-shot', angle: 0 },
@@ -36,7 +35,7 @@ function makeArena(seed, mode) {
   ];
   const landmarks = Array.from({ length: 18 }, (_, i) => ({ id: `landmark-${i}`, x: 650 + i * 980, y: 300 + Math.floor(next() * 7200), kind: ['fork', 'cheese', 'sauce', 'crate'][i % 4] }));
   const items = Array.from({ length: 30 }, (_, i) => ({ id: `crumb-${i}`, x: 280 + Math.floor(next() * (WORLD.width - 560)), y: 900 + Math.floor(next() * 7000), type: i % 5 === 0 ? 'relic' : 'crumb', value: i % 5 === 0 ? 3 : 1, collected: false }));
-  return { width: WORLD.width, height: WORLD.height, floorY: WORLD.floorY, platforms, anchors, objects, landmarks, items, arenaLabel: `PLATE-${String(Math.floor(next() * 90) + 10).padStart(2, '0')}`, mode };
+  return { width: WORLD.width, height: WORLD.height, floorY: WORLD.floorY, platforms, objects, landmarks, items, arenaLabel: `PLATE-${String(Math.floor(next() * 90) + 10).padStart(2, '0')}`, mode };
 }
 function createPlayer(id, name, index) { return { id, name: String(name || 'PASTA').replace(/[^a-z0-9_-]/gi, '').slice(0, 12).toUpperCase() || 'PASTA', color: COLORS[index % COLORS.length], x: 220 + index * 95, y: WORLD.floorY - 66, vx: 0, vy: 0, w: 92, h: 66, onGround: false, score: 0, hp: PHYSICS.maxHp, fallCount: 0, taggedAt: 0, tagCount: 0, highTime: 0, hidden: false, input: { hook: false, aimX: 900, aimY: 400 }, hook: null, roomId: null }; }
 function code() { let value; do value = Math.random().toString(36).slice(2, 6).toUpperCase(); while (rooms.has(value)); return value; }
@@ -48,7 +47,6 @@ function objectById(room, id) { return room.map.objects.find((o) => o.id === id)
 function targetInAim(origin, target, aimAngle, spread, maxLength) { const length = dist(origin.x, origin.y, target.x, target.y); const angle = Math.atan2(target.y - origin.y, target.x - origin.x); const delta = Math.abs(Math.atan2(Math.sin(angle - aimAngle), Math.cos(angle - aimAngle))); return length < maxLength && delta < spread ? { ...target, length, delta } : null; }
 function hookTarget(player, room) {
   const origin = { x: player.x + player.w / 2, y: player.y + player.h / 2 }; const aimAngle = Math.atan2(player.input.aimY - origin.y, player.input.aimX - origin.x); const candidates = [];
-  for (const anchor of room.map.anchors) { const found = targetInAim(origin, anchor, aimAngle, .3, 760); if (found) candidates.push({ type: 'terrain', id: anchor.id, x: found.x, y: found.y, length: found.length, delta: found.delta }); }
   for (const surface of room.map.platforms) {
     const points = [{ x: surface.x + surface.w / 2, y: surface.y }, { x: surface.x + surface.w / 2, y: surface.y + surface.h }, { x: surface.x, y: surface.y + surface.h / 2 }, { x: surface.x + surface.w, y: surface.y + surface.h / 2 }];
     points.forEach((point, index) => { const found = targetInAim(origin, point, aimAngle, .24, 760); if (found) candidates.push({ type: 'terrain', id: `${surface.id}-edge-${index}`, x: found.x, y: found.y, length: found.length, delta: found.delta }); });

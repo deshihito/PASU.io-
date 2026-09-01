@@ -10,7 +10,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 const PORT = process.env.PORT || 3000;
 const TICK_MS = 50;
 const WORLD = { width: 18000, height: 9800, floorY: 8600 };
-const PHYSICS = { playerMaxSpeed: 13, gravity: .5, objectGravity: .44, noodleTension: .025, maxHp: 100, hitCooldown: 550 };
+const PHYSICS = { playerMaxSpeed: 13, gravity: .5, objectGravity: .44, noodleTension: .025, hookMaxDistance: 760, hookMaxForce: 2.6, maxHp: 100, hitCooldown: 550 };
 const COLORS = ['#F6C445', '#D94A32', '#2F4858', '#E08E0B', '#6B7280', '#9E2A2B'];
 const MODES = { tag: { label: 'TAG', goal: 'TOUCH' }, hide: { label: 'HIDE', goal: 'STAY STILL' }, free: { label: 'FREE', goal: 'ROAM' }, hill: { label: 'HILL', goal: 'CLIMB' }, pvp: { label: 'PVP', goal: 'BONK' } };
 const rooms = new Map();
@@ -44,16 +44,13 @@ function addPlayer(room, id, name) { const p = createPlayer(id, name, room.playe
 function respawn(p, room) { p.x = 220; p.y = room.map.floorY - p.h; p.vx = 0; p.vy = 0; p.hp = PHYSICS.maxHp; p.hook = null; }
 function removePlayer(id) { for (const room of rooms.values()) if (room.players.has(id)) { room.players.delete(id); if (room.hostId === id) room.hostId = room.players.keys().next().value || null; if (!room.players.size) rooms.delete(room.id); return room; } return null; }
 function objectById(room, id) { return room.map.objects.find((o) => o.id === id); }
-function targetInAim(origin, target, aimAngle, spread, maxLength) { const length = dist(origin.x, origin.y, target.x, target.y); const angle = Math.atan2(target.y - origin.y, target.x - origin.x); const delta = Math.abs(Math.atan2(Math.sin(angle - aimAngle), Math.cos(angle - aimAngle))); return length < maxLength && delta < spread ? { ...target, length, delta } : null; }
+function lineRectHit(start, end, rectangle) { const dx = end.x - start.x; const dy = end.y - start.y; let near = 0; let far = 1; for (const [origin, delta, min, max] of [[start.x, dx, rectangle.x, rectangle.x + rectangle.w], [start.y, dy, rectangle.y, rectangle.y + rectangle.h]]) { if (Math.abs(delta) < .0001) { if (origin < min || origin > max) return null; continue; } let t1 = (min - origin) / delta; let t2 = (max - origin) / delta; if (t1 > t2) [t1, t2] = [t2, t1]; near = Math.max(near, t1); far = Math.min(far, t2); if (near > far) return null; } const t = near >= 0 ? near : 0; if (t > 1) return null; return { x: start.x + dx * t, y: start.y + dy * t, t, length: Math.hypot(dx, dy) * t }; }
 function hookTarget(player, room) {
-  const origin = { x: player.x + player.w / 2, y: player.y + player.h / 2 }; const aimAngle = Math.atan2(player.input.aimY - origin.y, player.input.aimX - origin.x); const candidates = [];
-  for (const surface of room.map.platforms) {
-    const points = [{ x: surface.x + surface.w / 2, y: surface.y }, { x: surface.x + surface.w / 2, y: surface.y + surface.h }, { x: surface.x, y: surface.y + surface.h / 2 }, { x: surface.x + surface.w, y: surface.y + surface.h / 2 }];
-    points.forEach((point, index) => { const found = targetInAim(origin, point, aimAngle, .24, 760); if (found) candidates.push({ type: 'terrain', id: `${surface.id}-edge-${index}`, x: found.x, y: found.y, length: found.length, delta: found.delta }); });
-  }
-  for (const object of room.map.objects) { const found = targetInAim(origin, { x: object.x + object.w / 2, y: object.y + object.h / 2 }, aimAngle, .65, 760); if (found) candidates.push({ type: 'object', id: object.id, x: found.x, y: found.y, length: found.length, delta: found.delta, weight: object.weight }); }
-  for (const other of room.players.values()) { if (other.id === player.id) continue; const found = targetInAim(origin, { x: other.x + other.w / 2, y: other.y + other.h / 2 }, aimAngle, .42, 600); if (found) candidates.push({ type: 'player', id: other.id, x: found.x, y: found.y, length: found.length, delta: found.delta }); }
-  candidates.sort((a, b) => a.delta * 420 + a.length - (b.delta * 420 + b.length)); const target = candidates[0]; return target ? { type: target.type, id: target.id, x: target.x, y: target.y, len: target.length, weight: target.weight || 1 } : null;
+  const origin = { x: player.x + player.w / 2, y: player.y + player.h / 2 }; const aimDX = player.input.aimX - origin.x; const aimDY = player.input.aimY - origin.y; const aimLength = Math.hypot(aimDX, aimDY); if (aimLength < 2) return null; const reach = Math.min(aimLength, PHYSICS.hookMaxDistance); const end = { x: origin.x + aimDX / aimLength * reach, y: origin.y + aimDY / aimLength * reach }; const candidates = [];
+  for (const surface of room.map.platforms) { const hit = lineRectHit(origin, end, surface); if (hit) candidates.push({ type: 'terrain', id: surface.id, x: hit.x, y: hit.y, len: hit.length }); }
+  for (const object of room.map.objects) { const hit = lineRectHit(origin, end, object); if (hit) candidates.push({ type: 'object', id: object.id, x: hit.x, y: hit.y, len: hit.length }); }
+  for (const other of room.players.values()) { if (other.id === player.id) continue; const hit = lineRectHit(origin, end, other); if (hit) candidates.push({ type: 'player', id: other.id, x: hit.x, y: hit.y, len: hit.length }); }
+  candidates.sort((a, b) => a.len - b.len); const target = candidates[0]; return target ? { type: target.type, id: target.id, x: target.x, y: target.y, len: target.len } : null;
 }
 function updateHook(player, room) {
   if (!player.input.hook) { player.hook = null; return; }
@@ -62,11 +59,11 @@ function updateHook(player, room) {
   let tx = player.hook.x; let ty = player.hook.y; let targetPlayer = null; let targetObject = null;
   if (player.hook.type === 'player') { targetPlayer = room.players.get(player.hook.id); if (!targetPlayer) { player.hook = null; return; } tx = targetPlayer.x + targetPlayer.w / 2; ty = targetPlayer.y + targetPlayer.h / 2; }
   if (player.hook.type === 'object') { targetObject = objectById(room, player.hook.id); if (!targetObject) { player.hook = null; return; } tx = targetObject.x + targetObject.w / 2; ty = targetObject.y + targetObject.h / 2; }
-  player.hook.x = tx; player.hook.y = ty; const ox = player.x + player.w / 2; const oy = player.y + player.h / 2; const dx = tx - ox; const dy = ty - oy; const length = Math.hypot(dx, dy); player.hook.len = length; if (length > 760) { player.hook = null; return; } if (length < 42) return;
-  const nx = dx / length; const ny = dy / length; const tangentX = -ny; const tangentY = nx; const mouseLength = clamp(dist(ox, oy, player.input.aimX, player.input.aimY), 42, 760); const stretch = Math.max(0, length - mouseLength); const aimDX = player.input.aimX - ox; const aimDY = player.input.aimY - oy; const aimLength = Math.max(1, Math.hypot(aimDX, aimDY)); const mouseTorque = clamp((dx * aimDY - dy * aimDX) / (length * aimLength), -1, 1); const tension = Math.min(2.6, stretch * PHYSICS.noodleTension * 1.7); const tangentForce = mouseTorque * .42; if (tension <= 0 && Math.abs(tangentForce) < .01) return;
-  if (player.hook.type === 'terrain') { player.vx += nx * tension + tangentX * tangentForce; player.vy += ny * tension + tangentY * tangentForce; }
-  if (targetObject) { targetObject.vx -= nx * tension / targetObject.weight; targetObject.vy -= ny * tension / targetObject.weight; targetObject.vx -= tangentX * tangentForce / targetObject.weight; targetObject.vy -= tangentY * tangentForce / targetObject.weight; }
-  if (targetPlayer) { player.vx += nx * tension * .55 + tangentX * tangentForce; player.vy += ny * tension * .55 + tangentY * tangentForce; targetPlayer.vx -= nx * tension * .16; targetPlayer.vy -= ny * tension * .1; }
+  player.hook.x = tx; player.hook.y = ty; const ox = player.x + player.w / 2; const oy = player.y + player.h / 2; const dx = tx - ox; const dy = ty - oy; const length = Math.hypot(dx, dy); player.hook.len = length; if (length > PHYSICS.hookMaxDistance) { player.hook = null; return; } if (length < 42) return;
+  const nx = dx / length; const ny = dy / length; const tangentX = -ny; const tangentY = nx; const mouseLength = clamp(dist(ox, oy, player.input.aimX, player.input.aimY), 42, PHYSICS.hookMaxDistance); const stretch = Math.max(0, length - mouseLength); const aimDX = player.input.aimX - ox; const aimDY = player.input.aimY - oy; const aimLength = Math.max(1, Math.hypot(aimDX, aimDY)); const mouseTorque = clamp((dx * aimDY - dy * aimDX) / (length * aimLength), -1, 1); const tension = Math.min(PHYSICS.hookMaxForce, stretch * PHYSICS.noodleTension * 1.7); const tangentForce = mouseTorque * .42; let forceX = nx * tension + tangentX * tangentForce; let forceY = ny * tension + tangentY * tangentForce; const forceLength = Math.hypot(forceX, forceY); if (forceLength > PHYSICS.hookMaxForce) { forceX *= PHYSICS.hookMaxForce / forceLength; forceY *= PHYSICS.hookMaxForce / forceLength; } if (Math.abs(forceX) < .01 && Math.abs(forceY) < .01) return;
+  if (player.hook.type === 'terrain') { player.vx += forceX; player.vy += forceY; }
+  if (targetObject) { targetObject.vx -= forceX / targetObject.weight; targetObject.vy -= forceY / targetObject.weight; }
+  if (targetPlayer) { player.vx += forceX * .55; player.vy += forceY * .55; targetPlayer.vx -= forceX * .16; targetPlayer.vy -= forceY * .1; }
 }
 function collides(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
 function settleBody(body, room, oldBottom) { body.onGround = false; for (const surface of [...room.map.platforms, ...room.map.objects]) { if (surface === body) continue; const overlapsX = body.x + body.w > surface.x && body.x < surface.x + surface.w; const bottom = body.y + body.h; if (overlapsX && body.vy >= 0 && oldBottom <= surface.y + 10 && bottom >= surface.y) { body.y = surface.y - body.h; body.vy = 0; body.onGround = true; return; } } }

@@ -24,7 +24,7 @@
 
 ## Main build
 
-`docs/game.js` は基本入力を `hook`、`aimX`、`aimY` のみにし、Socket.IOへ50ms周期で送る。`server/server.js` の `hookTarget` は壁・床・天井・固定足場など全ての固定矩形の面、動態オブジェクト、プレイヤーを候補にして最も照準に近い対象へ接続する。`updateHook` は元仕様の長さ、張力、接線方向のトルクを維持し、対象種別に応じて力を分配する。
+`docs/game.js` は基本入力を `hook`、`aimX`、`aimY` のみにし、Socket.IOへ50ms周期で送る。`server/server.js` の `hookTarget` はクリック位置までの線分と、壁・床・天井・固定足場など全ての固定矩形、動態オブジェクト、プレイヤーの矩形が交差した場合だけ接続する。`updateHook` は接続対象を保持し、フック最大距離760、最大力2.6を超えない範囲で、対象種別に応じて力を分配する。
 
 ## Verification criteria
 

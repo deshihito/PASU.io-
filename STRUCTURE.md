@@ -1,39 +1,33 @@
 # Structure: PASU.io Vector Pasta Party
 
-## Data Models
+## Input model
+
+クライアントから送る基本入力は `hook`、`aimX`、`aimY` の3つだけ。`pointerdown` は照準を更新して麺の発射と接続を開始し、接続中の `pointermove` はマウス位置だけを更新する。`pointerup`、`pointercancel`、`lostpointercapture`、windowの `blur`、touchend、touchcancelで接続を解除する。
+
+## Target model
+
+| 種類 | サーバー側の識別 | 力の適用先 |
+|---|---|---|
+| 不動態 | `terrain` | プレイヤー自身 |
+| 動態 | `object` | 対象オブジェクト |
+| プレイヤー | `player` | プレイヤー自身と対象プレイヤー |
+
+`hookTarget` は固定アンカー、足場の4面、動態オブジェクト、他プレイヤーを照準角度と距離で候補化する。接続後は `player.hook` に対象を保持し、接続中に候補を再選択しない。
+
+## Data models
 
 ### Player
 
-`id`、`name`、`color`、`x`、`y`、`vx`、`vy`、`w`、`h`、`hp`、`score`、`fallCount`、`hook`、`heldObjectId`、`input` を持つ。`input` は `hook`、`grab`、`use`、`aimX`、`aimY` で、移動は麺フックの物理結果からのみ生じる。
-
-### Room
-
-`id`、`hostId`、`seed`、`mode`、`started`、`players`、`map` を持つ。`mode` は `tag`、`hide`、`free`、`hill`、`pvp` のいずれかで、公開状態には `modeLabel` と `goal` も含める。
-
-### Map
-
-`width: 18000`、`height: 9800`、`floorY`、`platforms`、`anchors`、`landmarks`、`objects`、`items` を持つ。マップはルームseedから決定的に生成し、現行比で横10倍・縦10倍の空間を、白い床・黄色い足場・赤い外周線で描画する。
+`id`、`name`、`color`、`x`、`y`、`vx`、`vy`、`w`、`h`、`hp`、`score`、`fallCount`、`hook`、`input` を持つ。`input` はフックの押下状態とマウス座標だけで、歩行・ジャンプ・攻撃専用入力はない。
 
 ### InteractiveObject
 
-`id`、`x`、`y`、`w`、`h`、`vx`、`vy`、`weight`、`kind`、`effect`、`angle`、`heldBy` を持つ。`kind` は `hammer`、`gun`、`stone`。ハンマーは重量4.8、銃は重量0.8、石ころは重量1.2で、投擲速度と衝突ダメージへ反映する。
+`id`、`x`、`y`、`w`、`h`、`vx`、`vy`、`weight`、`kind`、`effect`、`angle` を持つ。ハンマーは重量4.8、銃は0.8、石ころは1.2。PvPではフックで移動させ、速度と重量から接触ダメージを計算する。
 
-## Architecture
+### Room / Map
 
-### Server (Node.js + Socket.IO)
+Roomは `id`、`hostId`、`seed`、`mode`、`started`、`players`、`map` を持つ。Mapは `18000 × 9800` のワールドに、床・天井・壁、94足場、56アンカー、18ランドマーク、6道具、30アイテムを含む。
 
-`server.js` がルームライフサイクル、seedマップ生成、5モード状態、麺フック対象選択、道具の掴み・解除・投擲、重力・衝突・HP・スコアを担当する。ゲーム状態は50ms周期でルームへブロードキャストする。
+## Client structure
 
-### Client (HTML + Canvas)
-
-`docs/index.html` がホーム、モード選択、ルーム、HUDの構造を持つ。`docs/style.css` は白・黄・赤・チャコールのフラットUIを担当する。`docs/game.js` はSocket.IOイベント、pointer入力、Canvas上のベクター描画、`?demo` 導線を担当する。
-
-## Communication Protocol
-
-- `createRoom({ name, mode })` → `roomJoined(state)`
-- `joinRoom({ code, name })` → `roomJoined(state)`
-- `startGame` → `state(world)`
-- `input({ hook, grab, use, aimX, aimY })` → `state(world)`
-- `state(world)` → 全クライアントへプレイヤー、マップ、道具を同期
-- `itemCollected(itemId, playerId, score, value)` → 取得演出
-- `playerHit(playerId, damage, objectId, effect)` → 被弾演出
+`docs/index.html` は余計な操作説明を置かず、モード選択・ルームコード・最小HUD・接続状態の円形アイコンだけを表示する。`docs/style.css` はゲーム領域へ `touch-action: none`、`user-select: none`、`-webkit-touch-callout: none` を設定する。`docs/game.js` はCanvas上の円・線・矩形・多角形描画とSocket.IO同期を担当する。

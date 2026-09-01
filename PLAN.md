@@ -1,37 +1,35 @@
 # Game Plan: PASU.io Vector Pasta Party
 
-## Goal
+## Current hook contract
 
-写実的な表現を避け、白・黄・赤・濃色のフラットなベクター描画で、麺フック移動を核にした5種類のパーティゲームモードを遊べるようにする。
+フック／ハンドが唯一の基本アクション。プレイヤーがゲーム画面をクリックすると、照準方向のターゲットへ麺を一度だけ発射して接続する。接続後、クリックを押し続けている間のマウス移動だけが張力と移動方向を更新し、クリックを離すと接続を解除する。
 
-## Risk Tasks
+## Target rules
 
-### 1. 大規模seedマップの可読性
+| 対象 | 接続後の挙動 |
+|---|---|
+| 不動態 | 壁・床・天井・固定足場・アンカー。プレイヤー自身へ張力を適用する |
+| 動態 | 箱・ハンマー・銃・石ころ。対象物へ張力を適用し、速度と重量で動かす |
+| プレイヤー | 相手の位置へ追従する接続。双方に反作用を適用する |
 
-- **Why isolated:** 現行比で横10倍・縦10倍のマップは、視界外の地形が増えるため、ランドマークとカメラ追従がないと方向感覚を失う。
-- **Approach:** `18000 x 9800` のワールド、94個の足場、56個のアンカー、18個のランドマークをseedから生成し、カメラをプレイヤーへ滑らかに追従させる。
-- **Verify:** 画面上で白い床、黄色い足場、赤い枠、フォーク・チーズ・ソース缶・木箱の図形が読み取れる。
+## Risk tasks
 
-### 2. 長押し麺フックと掴み状態
+### 1. 発射と接続の分離
 
-- **Why isolated:** 左ボタンは通常のフック、PvPの近距離では道具の掴みにも使うため、pointerup・pointercancel・blurで状態を必ず解除する必要がある。
-- **Approach:** クライアントが50msごとに `hook`、`grab`、`use`、照準を送り、サーバーが対象選択、麺張力、道具の `heldBy`、投擲速度を一元管理する。
-- **Verify:** 長押し中に麺線が表示され、近くの道具を持つとHUDが道具名に変わり、離すと物体が飛ぶ。
+`pointerdown` で照準を確定して接続を開始し、`pointermove` は接続後の張力操作だけに使う。サーバー側では `player.hook` が存在する間は対象を再選択しない。
 
-### 3. モードごとの勝敗言語
+### 2. タッチ長押しのブラウザ干渉
 
-- **Why isolated:** 同じ操作で5モードを遊べても、目的が画面に出ないとモード追加が伝わらない。
-- **Approach:** ルーム作成時にモードを選び、server stateへ `modeLabel` と `goal` を含め、ホーム、ルーム、ゲームHUDに表示する。ヒルアンドハイは高所滞在時間でスコアを増やす。
-- **Verify:** ホームで5モードを選択でき、ルームとゲーム画面に選択モードと目的が表示される。
+ゲームCanvasに `touch-action: none`、`user-select: none`、`-webkit-touch-callout: none` を適用し、touchstart・touchmove・touchend・touchcancel・contextmenu・selectstartを明示的に抑止する。名前入力とルームコード入力はゲームCanvas外なので通常どおり残す。
 
-## Main Build
+## Main build
 
-`docs/index.html`、`docs/style.css`、`docs/game.js` はCanvasとCSSのベクター図形のみでゲーム画面を描画する。`server/server.js` はSocket.IOでルーム、モード、seedマップ、プレイヤー、アイテム、物理オブジェクトを同期する。PvP道具はハンマー（重量4.8）、銃（重量0.8）、石ころ（重量1.2）を配置し、衝突速度と重量からダメージを計算する。
+`docs/game.js` は基本入力を `hook`、`aimX`、`aimY` のみにし、Socket.IOへ50ms周期で送る。`server/server.js` の `hookTarget` はアンカー、足場の面、動態オブジェクト、プレイヤーを候補にして最も照準に近い対象へ接続する。`updateHook` は元仕様の長さ、張力、接線方向のトルクを維持し、対象種別に応じて力を分配する。
 
 ## Verification criteria
 
 - `node --check server/server.js` と `node --check docs/game.js` が成功する。
-- ローカルサーバーの `/` がPASU.ioのホームHTMLとCanvasを返す。
-- 5モード、重量付き3道具、18000×9800のマップ定数が実装に存在する。
-- `git diff --check` が成功し、実行時の外部画像素材参照がない。
-- `?demo` でルーム作成から開始までの導線を自動実行できる。
+- `pointerdown`、接続中の`pointermove`、`pointerup`、touch解除で入力が破綻しない。
+- 旧来の `grab`、`use`、Space、ハンド専用アクションがクライアントと説明文に残っていない。
+- 3種類のターゲットへ向けた分岐がサーバーに存在し、プレイヤー対象への反作用が維持される。
+- ローカルサーバーの `/` と `?demo` が応答し、`git diff --check` が成功する。

@@ -60,3 +60,11 @@ Past.ioは既存の複雑なPVP実装を残すより、ユーザー要求の最�
 PvPではハンマー（重量4.8、heavy-hit）、銃（重量0.8、recoil-shot）、石ころ（重量1.2、bonk）を動的オブジェクトとして実装した。左ボタン長押しで近くの道具を持ち、離すと投擲、Spaceで銃の反動効果を発動する。オブジェクトには `weight`、`effect`、`heldBy` を持たせ、衝突速度に基づくダメージとノックバックを同期する。
 
 `node --check server/server.js` と `node --check docs/game.js` は成功。ローカルサーバーを一時起動し、`/` が `PASU.io` と Canvasを返すことを確認した。外部画像参照はクライアントから除去済み。
+
+## Two-stage hook restoration
+
+2026-09-01: フック／ハンドを唯一の基本アクションとして再整理。`pointerdown` で照準ターゲットへ麺を一度発射して接続し、接続中は押下を維持した `pointermove` で張力と方向を操作、`pointerup` で解除する2段階操作に戻した。`grab`、`use`、Spaceなどの別入力は削除した。
+
+フック対象は、壁・床・天井・固定足場・アンカーの不動態、箱・PvP道具の動態オブジェクト、他プレイヤー。サーバーは接続後に対象を再選択せず、不動態ではプレイヤー、動態では対象物、プレイヤー対象では双方へ元仕様の張力・接線方向の反作用を適用する。
+
+スマホの長押し誤コピー対策として、ゲームCanvasへ `touch-action: none`、`user-select: none`、`-webkit-touch-callout: none` を付け、touchstart・touchmove・touchend・touchcancel・contextmenu・selectstart・dragstartを抑止した。フォーム入力には制限を掛けていない。

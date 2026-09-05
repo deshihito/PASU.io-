@@ -83,3 +83,43 @@ https://localhost:3000/?client_id=YOUR_DISCORD_APPLICATION_ID
 本番のActivity URLは通常 `https://YOUR_DISCORD_APPLICATION_ID.discordsays.com/` となるため、ホスト名からClient IDを自動判定します。サーバーはSDKから取得した `instanceId` をルームキーとして扱い、同じDiscord Activityインスタンス内だけで参加者を共有します。Activity用のルーム上限は6人です。
 
 Discord側の設定は、[Activities公式ドキュメント](https://docs.discord.com/developers/activities/overview)および[ローカル開発ガイド](https://docs.discord.com/developers/activities/development-guides/local-development)を参照してください。
+
+
+## GitHub CodespacesでDiscord Activityをテストする
+
+リポジトリには `.devcontainer/devcontainer.json` を追加してあり、Codespaces作成時にNode.js 22、3000番ポートの自動転送、依存関係のインストール、Activityバンドル生成を行います。
+
+Codespacesのターミナルで次を実行します。
+
+```bash
+cd server
+pnpm dev
+```
+
+サーバーは `0.0.0.0:3000` で待ち受けます。Codespacesの **PORTS** パネルで `3000` が表示されたら、右クリックして **Port Visibility → Public** を選びます。その後、必要に応じて **Change Port Protocol → HTTPS** を選び、表示されたURLをコピーします。CodespacesのURLは次の形式です。
+
+```text
+https://CODESPACE_NAME-3000.app.github.dev/
+```
+
+例えばCodespace名が `ideal-space-abc123` の場合、URLは次のようになります。
+
+```text
+https://ideal-space-abc123-3000.app.github.dev/
+```
+
+Discord Activityのローカルテストでは、Application URL Overrideに次のURLを入力します。`YOUR_APPLICATION_ID`はDiscord Developer PortalのGeneral Informationに表示されるApplication IDです。
+
+```text
+https://ideal-space-abc123-3000.app.github.dev/?client_id=YOUR_APPLICATION_ID
+```
+
+Developer Portalの **Activities → URL Mappings** には、プロトコルを除いたCodespacesホストを登録します。
+
+| Prefix | Target |
+|---|---|
+| `/` | `ideal-space-abc123-3000.app.github.dev` |
+
+Codespacesの名前と転送URLは環境ごとに変わるため、上記URLは形式例です。実際にはCodespacesのPORTSパネルに表示されるURLをそのまま使ってください。GitHub公式仕様では、転送URLは `https://CODESPACENAME-PORT.app.github.dev` の形式で、公開ポートはログインなしでアクセスできます。[GitHub Codespacesのポート転送手順](https://docs.github.com/en/codespaces/developing-in-a-codespace/forwarding-ports-in-your-codespace)
+
+Codespacesを停止・再作成した場合はURLが変わる可能性があるため、そのたびにDiscord Developer PortalのURL Mapping TargetとApplication URL Overrideを更新してください。

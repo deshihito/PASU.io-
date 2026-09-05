@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "dev": "pnpm run build:activity && node server.js",
     "build:activity": "esbuild activity-entry.js --bundle --format=esm --target=es2020 --outfile=../docs/discord-activity.js"
   },
   "dependencies": {

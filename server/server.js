@@ -137,4 +137,4 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => { const room = removePlayer(socket.id); if (room) broadcast(room); });
 });
 setInterval(() => { const now = Date.now(); for (const room of rooms.values()) { updateObjects(room, now); for (const player of room.players.values()) updatePlayer(player, room, now); updateRound(room, now); broadcast(room); } }, TICK_MS);
-server.listen(PORT, () => console.log(`PASU.io vector arena listening on ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`PASU.io vector arena listening on 0.0.0.0:${PORT}`));

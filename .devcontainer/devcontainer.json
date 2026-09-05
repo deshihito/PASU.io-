@@ -1,0 +1,17 @@
+{
+  "name": "PASU.io Discord Activity",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "PASU.io Discord Activity",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "corepack enable && pnpm --dir server install && pnpm --dir server run build:activity",
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint"]
+    }
+  }
+}

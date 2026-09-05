@@ -1,7 +1,7 @@
 /* Design philosophy: vector pasta western — flat shapes, crisp outlines, white/yellow/red contrast, noodle-only two-stage hook. */
 const socket = io();
 const $ = (id) => document.getElementById(id);
-const state = { screen: 'home', meId: null, room: null, map: null, players: [], cameraX: 0, cameraY: 0, zoom: 1, bannerUntil: 0, selectedMode: 'free', lastFall: 0, lastWinnerId: null };
+const state = { screen: 'home', meId: null, room: null, map: null, players: [], cameraX: 0, cameraY: 0, zoom: 1, bannerUntil: 0, selectedMode: 'free', lastFall: 0, lastWinnerId: null, activity: null, activityJoined: false };
 const input = { hook: false, aimX: 900, aimY: 400 };
 const canvas = $('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -13,6 +13,9 @@ function setScreen(name) { state.screen = name; ['home', 'room', 'game'].forEach
 function setStatus(id, text) { $(id).textContent = text || ''; }
 function showBanner(text, duration = 850) { $('gameBanner').textContent = text; $('gameBanner').classList.remove('is-hidden'); state.bannerUntil = performance.now() + duration; }
 function playerName() { return (($('nameInput').value.trim().replace(/[^a-z0-9_-]/gi, '') || 'PASTA').slice(0, 12)); }
+function tryJoinActivity() { if (!state.activity?.instanceId || !socket.connected || state.activityJoined) return; state.activityJoinPending = true; socket.emit('activityJoin', { instanceId: state.activity.instanceId, name: playerName(), mode: state.selectedMode }); }
+window.addEventListener('pasu-activity-ready', (event) => { state.activity = event.detail; document.body.classList.add('is-activity'); $('createButton').textContent = 'JOIN ACTIVITY'; $('homeStatus').textContent = 'DISCORD ACTIVITY'; tryJoinActivity(); });
+window.addEventListener('pasu-activity-error', (event) => { document.body.classList.add('is-activity', 'is-activity-error'); setStatus('homeStatus', event.detail?.message || 'ACTIVITY OFFLINE'); });
 function escapeHTML(value) { return String(value).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c])); }
 function renderModes() { const icons = { tag: '●', hide: '◌', free: '○', hill: '▲', pvp: '✕' }; $('modeGrid').innerHTML = Object.entries(modeLabels).map(([mode, label]) => `<button class="mode-chip${mode === state.selectedMode ? ' is-active' : ''}" data-mode="${mode}" aria-label="${label}"><b>${icons[mode]}</b>${label}</button>`).join(''); document.querySelectorAll('.mode-chip').forEach((button) => button.addEventListener('click', () => { state.selectedMode = button.dataset.mode; renderModes(); })); }
 renderModes();
@@ -20,17 +23,17 @@ function renderRoom() { if (!state.room) return; $('roomModeTag').textContent = 
 function applyWorld(data) { state.room = data.room; state.map = data.map; state.players = data.players || []; const me = state.players.find((player) => player.id === state.meId); if (me) { $('hudMode').textContent = modeLabels[state.room.mode] || 'FREE'; $('hudScore').textContent = String(me.score || 0).padStart(2, '0'); $('hudRoom').textContent = state.room.id; $('hudHp').textContent = String(me.hp ?? 100); $('hudRule').textContent = state.room.short || ''; $('hookStatus').classList.toggle('is-live', Boolean(me.hook)); if (me.fallCount > state.lastFall) showBanner('DROP'); state.lastFall = me.fallCount || 0; } $('hudCrew').innerHTML = state.players.map((player) => `<i class="crew-dot${player.eliminated ? ' is-out' : ''}" style="--dot:${player.color}"></i>`).join(''); if (state.room.ended && state.room.winnerId !== state.lastWinnerId) { const winner = state.players.find((player) => player.id === state.room.winnerId); showBanner(winner ? `${winner.name} WIN` : 'TIME'); state.lastWinnerId = state.room.winnerId; input.hook = false; } if (state.room.started && state.screen !== 'game') setScreen('game'); if (!state.room.started && state.screen === 'game') setScreen('room'); renderRoom(); }
 function sendInput() { if (state.screen !== 'game') return; socket.emit('input', { hook: input.hook, aimX: input.aimX, aimY: input.aimY }); }
 
-$('createButton').addEventListener('click', () => { setStatus('homeStatus', ''); socket.emit('createRoom', { name: playerName(), mode: state.selectedMode }); });
+$('createButton').addEventListener('click', () => { setStatus('homeStatus', ''); if (state.activity?.connected) return tryJoinActivity(); socket.emit('createRoom', { name: playerName(), mode: state.selectedMode }); });
 $('joinButton').addEventListener('click', () => { const code = $('roomInput').value.trim().toUpperCase(); if (code.length !== 4) return setStatus('homeStatus', 'CODE'); setStatus('homeStatus', ''); socket.emit('joinRoom', { code, name: playerName() }); });
 $('roomInput').addEventListener('input', (event) => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
 $('startButton').addEventListener('click', () => socket.emit('startGame'));
 $('leaveButton').addEventListener('click', leaveRoom);
 $('gameLeaveButton').addEventListener('click', leaveRoom);
-function leaveRoom() { input.hook = false; sendInput(); socket.emit('leaveRoom'); state.room = null; state.map = null; state.players = []; setScreen('home'); setStatus('homeStatus', ''); }
+function leaveRoom() { input.hook = false; sendInput(); socket.emit('leaveRoom'); state.activityJoined = false; state.room = null; state.map = null; state.players = []; setScreen('home'); setStatus('homeStatus', state.activity?.connected ? 'LEFT ACTIVITY ROOM' : ''); }
 
-socket.on('connect', () => setStatus('homeStatus', ''));
+socket.on('connect', () => { setStatus('homeStatus', state.activity?.connected ? 'DISCORD ACTIVITY' : ''); tryJoinActivity(); });
 socket.on('disconnect', () => { input.hook = false; setStatus(state.screen === 'home' ? 'homeStatus' : 'roomStatus', 'OFFLINE'); });
-socket.on('roomJoined', (data) => { state.meId = socket.id; applyWorld(data); setScreen(data.room.started ? 'game' : 'room'); setStatus('homeStatus', ''); });
+socket.on('roomJoined', (data) => { state.meId = socket.id; state.activityJoined = Boolean(state.activity?.connected); applyWorld(data); setScreen(data.room.started ? 'game' : 'room'); setStatus('homeStatus', ''); });
 socket.on('state', applyWorld);
 socket.on('roomError', () => setStatus(state.screen === 'home' ? 'homeStatus' : 'roomStatus', 'ROOM'));
 socket.on('itemCollected', ({ playerId }) => { if (playerId === state.meId) showBanner('+1'); });

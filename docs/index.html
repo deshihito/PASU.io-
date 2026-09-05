@@ -10,11 +10,11 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-<main id="app">
+<main id="app" data-activity-capable="true">
   <section id="homeScreen" class="screen home-screen">
     <div class="home-panel"><div class="panel-head"><span>PLAY</span><b>5 MODES</b></div><label for="nameInput">NAME</label><input id="nameInput" maxlength="12" autocomplete="nickname" placeholder="PASTA" /><div class="mode-grid" id="modeGrid"></div><div class="home-actions"><button id="createButton" class="button button--primary">CREATE ROOM</button><div class="join-row"><input id="roomInput" maxlength="4" inputmode="text" placeholder="CODE" aria-label="Room code" /><button id="joinButton" class="button button--dark">JOIN</button></div></div><p id="homeStatus" class="status-line" aria-live="polite"></p></div>
   </section>
   <section id="roomScreen" class="screen room-screen is-hidden"><header class="room-header"><div class="brand-mini"><span class="logo-mark logo-mark--small"><i></i><b></b></span><span>PASU.io</span></div><span class="room-tag" id="roomModeTag">FREE</span></header><div class="room-layout"><div class="room-board"><p class="eyebrow">ROOM</p><h2 id="roomModeLabel">FREE</h2><p id="roomRule" class="room-rule"></p><p id="roomWin" class="room-win"></p><div class="room-code-label">CODE</div><strong id="roomCodeLabel">----</strong><div class="room-actions"><button id="startButton" class="button button--primary">START</button><button id="leaveButton" class="button button--ghost">LEAVE</button></div></div><div class="players-panel"><div class="players-heading"><span>CREW</span><b id="playerCount">0/6</b></div><div id="playerList" class="player-list"></div><p id="roomStatus" class="status-line" aria-live="polite"></p></div></div></section>
   <section id="gameScreen" class="screen game-screen is-hidden"><canvas id="gameCanvas"></canvas><div class="game-hud hud-left"><span class="hud-label" id="hudMode">FREE</span><strong id="hudScore">00</strong><span class="hud-sub" id="hudRoom">----</span><span class="hud-rule" id="hudRule"></span></div><div class="game-hud hud-right"><canvas id="miniMap" width="220" height="132" aria-label="map"></canvas><div id="hudCrew" class="crew-dots"></div><span class="hud-sub" id="hudHp">100</span></div><div class="hook-status" id="hookStatus" aria-label="hook"><span class="hook-glyph">⌁</span></div><div id="gameBanner" class="game-banner is-hidden"></div><button id="gameLeaveButton" class="game-leave" aria-label="exit">×</button></section>
-</main><script src="/socket.io/socket.io.js"></script><script src="/game.js"></script>
+</main><script src="/socket.io/socket.io.js"></script><script type="module" src="/discord-activity.js"></script><script src="/game.js"></script>
 </body></html>

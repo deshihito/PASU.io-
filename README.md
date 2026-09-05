@@ -59,3 +59,27 @@ npm start
 ```
 
 ブラウザで `http://localhost:3000` を開きます。`http://localhost:3000/?demo` では、ルーム作成からゲーム開始までを自動実行します。
+
+
+## Discord Activity
+
+PASU.ioはDiscord Embedded App SDKに対応しています。Discord Activityとして起動すると、同じActivityインスタンスの参加者は、手動のルームコード入力なしで同じSocket.IOルームへ自動参加します。ホストがルーム画面で `START` を押すとゲームが開始します。通常のブラウザで起動した場合は、従来どおりルーム作成・4桁コード参加を利用できます。
+
+### Activity向けローカル起動
+
+```bash
+cd server
+pnpm install
+pnpm run build:activity
+npm start
+```
+
+Discord Developer PortalでActivityを有効化し、URL Mappingの `/` を公開HTTPSホストへ向けます。ローカル開発では、Discord公式のローカル開発手順に従ってHTTPSトンネルを利用するか、Application URL Overrideで開発URLを指定します。ローカルURL OverrideでSDKのClient IDを明示する場合は、次のように `client_id` を付けます。
+
+```text
+https://localhost:3000/?client_id=YOUR_DISCORD_APPLICATION_ID
+```
+
+本番のActivity URLは通常 `https://YOUR_DISCORD_APPLICATION_ID.discordsays.com/` となるため、ホスト名からClient IDを自動判定します。サーバーはSDKから取得した `instanceId` をルームキーとして扱い、同じDiscord Activityインスタンス内だけで参加者を共有します。Activity用のルーム上限は6人です。
+
+Discord側の設定は、[Activities公式ドキュメント](https://docs.discord.com/developers/activities/overview)および[ローカル開発ガイド](https://docs.discord.com/developers/activities/development-guides/local-development)を参照してください。

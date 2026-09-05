@@ -21,6 +21,7 @@ const MODE_RULES = {
   pvp: { name: 'PvP', short: 'LAST PASTA', rule: '麺で道具と相手を振り回す。HPが0になると脱落。', win: '最後まで残ったパスタが勝利。', target: 1, limitMs: 180000 }
 };
 const rooms = new Map();
+const activityRooms = new Map();
 app.use(express.static(path.join(__dirname, '../docs')));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, '../docs/index.html')));
 function rng(seed) { let v = seed >>> 0; return () => { v += 0x6d2b79f5; let t = v; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -70,12 +71,12 @@ function makeArena(seed, mode) {
 }
 function createPlayer(id, name, index) { return { id, name: String(name || 'PASTA').replace(/[^a-z0-9_-]/gi, '').slice(0, 12).toUpperCase() || 'PASTA', color: COLORS[index % COLORS.length], x: 220 + index * 95, y: WORLD.floorY - 66, vx: 0, vy: 0, w: 92, h: 66, onGround: false, score: 0, hp: PHYSICS.maxHp, fallCount: 0, taggedAt: 0, tagCount: 0, highTime: 0, hillTicks: 0, hiddenTicks: 0, hidden: false, eliminated: false, input: { hook: false, aimX: 900, aimY: 400 }, hook: null, roomId: null }; }
 function code() { let value; do value = Math.random().toString(36).slice(2, 6).toUpperCase(); while (rooms.has(value)); return value; }
-function createRoom(hostId, hostName, mode = 'free') { const id = code(); const seed = Math.floor(Math.random() * 0xffffffff); const room = { id, hostId, seed, mode: MODES[mode] ? mode : 'free', map: null, players: new Map(), started: false, ended: false, startedAt: 0, endedAt: 0, winnerId: null }; room.map = makeArena(seed, room.mode); rooms.set(id, room); addPlayer(room, hostId, hostName); return room; }
+function createRoom(hostId, hostName, mode = 'free') { const id = code(); const seed = Math.floor(Math.random() * 0xffffffff); const room = { id, hostId, seed, mode: MODES[mode] ? mode : 'free', map: null, players: new Map(), started: false, ended: false, startedAt: 0, endedAt: 0, winnerId: null, activityInstanceId: null }; room.map = makeArena(seed, room.mode); rooms.set(id, room); addPlayer(room, hostId, hostName); return room; }
 function spawnPointFor(room, excludeId = null) { const occupied = [...room.players.values()].filter((other) => other.id !== excludeId); const points = room.map.spawnPoints || []; const clear = (point) => occupied.every((other) => dist(point.x, point.y, other.x, other.y) >= PHYSICS.spawnGap); const safePoint = points.find(clear); if (safePoint) return { ...safePoint }; for (let index = 0; index < 100; index += 1) { const point = { x: 180 + (index % 20) * 180, y: room.map.floorY - 66 - Math.floor(index / 20) * 180 }; if (point.x < WORLD.width - 140 && clear(point)) return point; } return { x: 180, y: room.map.floorY - 66 }; }
 function placePlayer(p, room) { const point = spawnPointFor(room, p.id); p.x = point.x; p.y = point.y; p.vx = 0; p.vy = 0; p.hp = PHYSICS.maxHp; p.hook = null; }
 function addPlayer(room, id, name) { const p = createPlayer(id, name, room.players.size); p.roomId = room.id; room.players.set(id, p); placePlayer(p, room); return p; }
 function respawn(p, room) { placePlayer(p, room); }
-function removePlayer(id) { for (const room of rooms.values()) if (room.players.has(id)) { room.players.delete(id); if (room.hostId === id) room.hostId = room.players.keys().next().value || null; if (!room.players.size) rooms.delete(room.id); return room; } return null; }
+function removePlayer(id) { for (const room of rooms.values()) if (room.players.has(id)) { room.players.delete(id); if (room.hostId === id) room.hostId = room.players.keys().next().value || null; if (!room.players.size) { if (room.activityInstanceId) activityRooms.delete(room.activityInstanceId); rooms.delete(room.id); } return room; } return null; }
 function objectById(room, id) { return room.map.objects.find((o) => o.id === id); }
 function lineRectHit(start, end, rectangle) { const dx = end.x - start.x; const dy = end.y - start.y; let near = 0; let far = 1; for (const [origin, delta, min, max] of [[start.x, dx, rectangle.x, rectangle.x + rectangle.w], [start.y, dy, rectangle.y, rectangle.y + rectangle.h]]) { if (Math.abs(delta) < .0001) { if (origin < min || origin > max) return null; continue; } let t1 = (min - origin) / delta; let t2 = (max - origin) / delta; if (t1 > t2) [t1, t2] = [t2, t1]; near = Math.max(near, t1); far = Math.min(far, t2); if (near > far) return null; } const t = near >= 0 ? near : 0; if (t > 1) return null; return { x: start.x + dx * t, y: start.y + dy * t, t, length: Math.hypot(dx, dy) * t }; }
 function hookTarget(player, room) {
@@ -109,6 +110,25 @@ function updateRound(room, now) { if (!room.started || room.ended) return; const
 function publicState(room) { const rules = MODE_RULES[room.mode]; return { room: { id: room.id, hostId: room.hostId, started: room.started, ended: room.ended, winnerId: room.winnerId, endReason: room.endReason || null, seed: room.seed, mode: room.mode, modeLabel: MODES[room.mode].label, goal: MODES[room.mode].goal, rule: rules.rule, win: rules.win, short: rules.short, timeLeftMs: room.startedAt && !room.ended ? Math.max(0, rules.limitMs - (Date.now() - room.startedAt)) : rules.limitMs }, map: room.map, players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, color: p.color, x: p.x, y: p.y, w: p.w, h: p.h, vx: p.vx, vy: p.vy, onGround: p.onGround, score: p.score, hp: p.hp, fallCount: p.fallCount, hitFlashUntil: p.hitFlashUntil, hidden: p.hidden, eliminated: p.eliminated, tagCount: p.tagCount, hiddenTicks: p.hiddenTicks, hillTicks: p.hillTicks, hook: p.hook })) }; }
 function broadcast(room) { io.to(room.id).emit('state', publicState(room)); }
 io.on('connection', (socket) => {
+  socket.on('activityJoin', ({ name, mode, instanceId }) => {
+    const activityKey = String(instanceId || '').trim().slice(0, 160);
+    if (!activityKey) return socket.emit('roomError', 'ACTIVITY');
+    let room = rooms.get(activityRooms.get(activityKey));
+    if (!room) {
+      room = createRoom(socket.id, name, mode);
+      room.activityInstanceId = activityKey;
+      activityRooms.set(activityKey, room.id);
+    } else if (room.players.size >= 6) {
+      return socket.emit('roomError', 'FULL');
+    } else {
+      addPlayer(room, socket.id, name);
+    }
+    socket.join(room.id);
+    socket.data.roomId = room.id;
+    socket.data.activityInstanceId = activityKey;
+    socket.emit('roomJoined', publicState(room));
+    broadcast(room);
+  });
   socket.on('createRoom', ({ name, mode }) => { const room = createRoom(socket.id, name, mode); socket.join(room.id); socket.data.roomId = room.id; socket.emit('roomJoined', publicState(room)); });
   socket.on('joinRoom', ({ code: roomCode, name }) => { const room = rooms.get(String(roomCode || '').trim().toUpperCase()); if (!room || room.started || room.players.size >= 6) return socket.emit('roomError', 'ROOM'); addPlayer(room, socket.id, name); socket.join(room.id); socket.data.roomId = room.id; socket.emit('roomJoined', publicState(room)); broadcast(room); });
   socket.on('startGame', () => { const room = rooms.get(socket.data.roomId); if (!room || room.hostId !== socket.id || room.started || room.ended) return; room.started = true; room.startedAt = Date.now(); room.ended = false; room.endedAt = 0; room.winnerId = null; room.endReason = null; room.players.forEach((p) => respawn(p, room)); broadcast(room); });

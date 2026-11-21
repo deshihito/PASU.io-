@@ -13,7 +13,7 @@ function setScreen(name) { state.screen = name; ['home', 'room', 'game'].forEach
 function setStatus(id, text) { $(id).textContent = text || ''; }
 function showBanner(text, duration = 850) { $('gameBanner').textContent = text; $('gameBanner').classList.remove('is-hidden'); state.bannerUntil = performance.now() + duration; }
 function playerName() { return (($('nameInput').value.trim().replace(/[^a-z0-9_-]/gi, '') || 'PASTA').slice(0, 12)); }
-function tryJoinActivity() { if (!state.activity?.instanceId || !socket.connected || state.activityJoined) return; state.activityJoinPending = true; socket.emit('activityJoin', { instanceId: state.activity.instanceId, name: playerName(), mode: state.selectedMode }); }
+function tryJoinActivity() { if (!state.activity?.instanceId || !socket.connected || state.activityJoined) return; socket.emit('activityJoin', { instanceId: state.activity.instanceId, name: playerName(), mode: state.selectedMode }); }
 window.addEventListener('pasu-activity-ready', (event) => { state.activity = event.detail; document.body.classList.add('is-activity'); $('createButton').textContent = 'JOIN ACTIVITY'; $('homeStatus').textContent = 'DISCORD ACTIVITY'; tryJoinActivity(); });
 window.addEventListener('pasu-activity-error', (event) => { document.body.classList.add('is-activity', 'is-activity-error'); setStatus('homeStatus', event.detail?.message || 'ACTIVITY OFFLINE'); });
 function escapeHTML(value) { return String(value).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c])); }
